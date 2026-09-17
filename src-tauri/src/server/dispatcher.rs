@@ -714,17 +714,34 @@ pub async fn dispatch_invoke(
         }
 
         "skills_run_script" => {
-            let skill_id = args.get("skillId").and_then(|v| v.as_str()).unwrap_or_default();
-            let script_name = args.get("scriptName").and_then(|v| v.as_str()).unwrap_or_default();
+            let skill_id = args.get("skillId")
+                .or_else(|| args.get("skill_id"))
+                .or_else(|| args.get("slug"))
+                .or_else(|| args.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let script_name = args.get("scriptName")
+                .or_else(|| args.get("script_name"))
+                .or_else(|| args.get("scriptFile"))
+                .or_else(|| args.get("script_file"))
+                .or_else(|| args.get("script"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             let script_args: Vec<String> = serde_json::from_value(args.get("args").cloned().unwrap_or(json!([])))
                 .unwrap_or_default();
             let cwd = args.get("cwd").and_then(|v| v.as_str()).map(std::path::PathBuf::from);
-            let timeout_ms = args.get("timeoutMs").and_then(|v| v.as_u64());
+            let timeout_ms = args.get("timeoutMs").or_else(|| args.get("timeout_ms")).and_then(|v| v.as_u64());
 
             let skills = MemoryGraphEngine::load_skills();
             let skill = skills
                 .into_iter()
-                .find(|s| s.id == skill_id)
+                .find(|s| {
+                    s.id == skill_id
+                        || s.id == format!("skill-{}", skill_id)
+                        || skill_id == format!("skill-{}", s.id)
+                        || s.name.eq_ignore_ascii_case(skill_id)
+                        || s.id.trim_start_matches("skill-") == skill_id.trim_start_matches("skill-")
+                })
                 .ok_or_else(|| format!("Skill '{}' not found", skill_id))?;
 
             let folder = skill
@@ -732,7 +749,12 @@ pub async fn dispatch_invoke(
                 .ok_or_else(|| format!("Skill '{}' has no directory configured", skill_id))?;
 
             let skill_dir = std::path::PathBuf::from(&folder);
-            let script_rel_path = format!("scripts/{}", script_name.trim_start_matches('/'));
+            let clean_script = script_name.trim_start_matches('/');
+            let script_rel_path = if clean_script.starts_with("scripts/") {
+                clean_script.to_string()
+            } else {
+                format!("scripts/{}", clean_script)
+            };
 
             let res = SkillScriptRunner::run_script(
                 &skill_dir,

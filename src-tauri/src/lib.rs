@@ -2117,15 +2117,36 @@ async fn call_mcp_tool(
                 return Ok(serde_json::to_value(&res).unwrap_or(serde_json::json!({})));
             }
             "run_skill_script" => {
-                let slug = arguments.get("slug").or_else(|| arguments.get("skill_id")).and_then(|v| v.as_str()).unwrap_or_default();
-                let script_file = arguments.get("script_file").or_else(|| arguments.get("script")).and_then(|v| v.as_str()).unwrap_or_default();
+                let slug = arguments.get("slug")
+                    .or_else(|| arguments.get("skill_id"))
+                    .or_else(|| arguments.get("skillId"))
+                    .or_else(|| arguments.get("id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let script_file = arguments.get("script_file")
+                    .or_else(|| arguments.get("script"))
+                    .or_else(|| arguments.get("script_name"))
+                    .or_else(|| arguments.get("scriptName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
                 let args: Vec<String> = serde_json::from_value(arguments.get("args").cloned().unwrap_or(serde_json::json!([]))).unwrap_or_default();
                 let timeout_ms = arguments.get("timeout_ms").or_else(|| arguments.get("timeoutMs")).and_then(|v| v.as_u64());
                 let skills = MemoryGraphEngine::load_skills();
-                let skill = skills.into_iter().find(|s| s.id == slug || s.id == format!("skill-{}", slug)).ok_or_else(|| format!("Skill '{}' não encontrada", slug))?;
+                let skill = skills.into_iter().find(|s| {
+                    s.id == slug
+                        || s.id == format!("skill-{}", slug)
+                        || slug == format!("skill-{}", s.id)
+                        || s.name.eq_ignore_ascii_case(slug)
+                        || s.id.trim_start_matches("skill-") == slug.trim_start_matches("skill-")
+                }).ok_or_else(|| format!("Skill '{}' não encontrada", slug))?;
                 let folder = skill.folder_path.as_ref().ok_or_else(|| "Pasta da skill não configurada".to_string())?;
                 let skill_dir = std::path::PathBuf::from(folder);
-                let script_rel_path = format!("scripts/{}", script_file.trim_start_matches('/'));
+                let clean_script = script_file.trim_start_matches('/');
+                let script_rel_path = if clean_script.starts_with("scripts/") {
+                    clean_script.to_string()
+                } else {
+                    format!("scripts/{}", clean_script)
+                };
                 let res = crate::services::skill_runner::SkillScriptRunner::run_script(&skill_dir, &script_rel_path, &args, None, skill.env_vars.as_ref(), timeout_ms).await?;
                 return Ok(serde_json::to_value(&res).unwrap_or(serde_json::json!({})));
             }
@@ -2963,30 +2984,53 @@ async fn skills_run_command(
 
 #[command]
 async fn skills_run_script(
-    skill_id: String,
-    script_name: String,
-    args: Vec<String>,
+    skill_id: Option<String>,
+    slug: Option<String>,
+    script_name: Option<String>,
+    script_file: Option<String>,
+    args: Option<Vec<String>>,
     cwd: Option<String>,
     timeout_ms: Option<u64>,
 ) -> Result<SkillCommandResult, String> {
+    let target_id = skill_id
+        .or(slug)
+        .ok_or_else(|| "Missing required parameter 'skillId' or 'slug'".to_string())?;
+
+    let target_script = script_name
+        .or(script_file)
+        .ok_or_else(|| "Missing required parameter 'scriptName' or 'scriptFile'".to_string())?;
+
+    let script_args = args.unwrap_or_default();
+
     let skills = MemoryGraphEngine::load_skills();
     let skill = skills
         .into_iter()
-        .find(|s| s.id == skill_id)
-        .ok_or_else(|| format!("Skill '{}' not found", skill_id))?;
+        .find(|s| {
+            s.id == target_id
+                || s.id == format!("skill-{}", target_id)
+                || target_id == format!("skill-{}", s.id)
+                || s.name.eq_ignore_ascii_case(&target_id)
+                || s.id.trim_start_matches("skill-") == target_id.trim_start_matches("skill-")
+        })
+        .ok_or_else(|| format!("Skill '{}' not found", target_id))?;
 
     let folder = skill
         .folder_path
-        .ok_or_else(|| format!("Skill '{}' has no directory configured", skill_id))?;
+        .ok_or_else(|| format!("Skill '{}' has no directory configured", target_id))?;
 
     let skill_dir = std::path::PathBuf::from(&folder);
-    let script_rel_path = format!("scripts/{}", script_name.trim_start_matches('/'));
+    let clean_script = target_script.trim_start_matches('/');
+    let script_rel_path = if clean_script.starts_with("scripts/") {
+        clean_script.to_string()
+    } else {
+        format!("scripts/{}", clean_script)
+    };
     let working_dir = cwd.map(std::path::PathBuf::from);
 
     SkillScriptRunner::run_script(
         &skill_dir,
         &script_rel_path,
-        &args,
+        &script_args,
         working_dir.as_deref(),
         skill.env_vars.as_ref(),
         timeout_ms,

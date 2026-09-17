@@ -1887,15 +1887,38 @@ const executeTool = async (toolCall: any, assistantMsg: any, force = false) => {
           envVars
         })
       } else if (targetTool.name === 'run_skill_script' || rawArgs.script_file || rawArgs.script) {
-        const scriptFile = rawArgs.script_file || rawArgs.script || ''
-        const slug = rawArgs.slug || targetTool.arguments?.slug || ''
+        const scriptName =
+          rawArgs.scriptName ||
+          rawArgs.script_name ||
+          rawArgs.script_file ||
+          rawArgs.script ||
+          targetTool.arguments?.scriptName ||
+          targetTool.arguments?.script_name ||
+          targetTool.arguments?.script_file ||
+          targetTool.arguments?.script ||
+          ''
+        const skillId =
+          rawArgs.skillId ||
+          rawArgs.skill_id ||
+          rawArgs.slug ||
+          rawArgs.id ||
+          targetTool.arguments?.skillId ||
+          targetTool.arguments?.skill_id ||
+          targetTool.arguments?.slug ||
+          targetTool.arguments?.id ||
+          ''
         const args = Array.isArray(rawArgs.args)
           ? rawArgs.args.map((a: any) => String(a))
           : (rawArgs.args ? [String(rawArgs.args)] : [])
+        const timeoutMs = rawArgs.timeout_ms || rawArgs.timeoutMs || undefined
+
         result = await invoke('skills_run_script', {
-          slug,
-          scriptFile,
-          args
+          skillId,
+          slug: skillId,
+          scriptName,
+          scriptFile: scriptName,
+          args,
+          timeoutMs
         })
       } else {
         const command = rawArgs.command || rawArgs.cmd || (typeof rawArgs === 'string' ? rawArgs : '')
@@ -1928,7 +1951,9 @@ const executeTool = async (toolCall: any, assistantMsg: any, force = false) => {
               })
             } else if (scriptStep && scriptStep.script_file) {
               result = await invoke('skills_run_script', {
+                skillId: matchedSkill.id,
                 slug: matchedSkill.id,
+                scriptName: scriptStep.script_file,
                 scriptFile: scriptStep.script_file,
                 args: []
               })

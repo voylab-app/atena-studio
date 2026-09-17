@@ -1265,14 +1265,13 @@ const heuristicFieldTranslation = (key: string) => {
 const getFieldDisplayName = (tc: any, key: string) => {
   if (tc.server_id === 'skills' || tc.name === 'run_command' || tc.name === 'run_skill_command' || tc.name === 'run_skill_script' || isProceduralSkillCall(tc)) {
     if (key === 'command' || key === 'cmd') return t('memory.skill_param_command')
-    if (key === 'script_file' || key === 'script') return t('memory.skill_param_script_file')
-    if (key === 'slug') return t('memory.skill_param_slug')
+    if (key === 'script_file' || key === 'script' || key === 'script_name' || key === 'scriptName') return t('memory.skill_param_script_file')
+    if (key === 'slug' || key === 'skillId' || key === 'skill_id' || key === 'id') return t('memory.skill_param_slug')
     if (key === 'args') return t('memory.skill_param_args')
     if (key === 'triggers' || key === 'gatilhos') return t('memory.skill_param_triggers')
     if (key === 'steps' || key === 'passos') return t('memory.skill_param_steps')
     if (key === 'scripts') return t('memory.skill_param_scripts')
     if (key === 'refinement_note' || key === 'refinementNote') return t('memory.skill_param_refinement_note')
-    if (key === 'id') return t('memory.skill_param_slug')
     if (key === 'name') return t('memory.skill_param_name')
   }
   if (tc.field_labels && tc.field_labels[key]) {
