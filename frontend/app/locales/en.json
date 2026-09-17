@@ -706,6 +706,8 @@
     "test_node_association_btn": "Test Association of this Node",
     "reinforce_synapses": "Reinforce Synapses",
     "delete_node_tooltip": "Delete Node",
+    "node_content": "Node Content",
+    "copy_content": "Copy full text",
     "node_type_object": "Object",
     "node_type_action": "Action",
     "node_type_container": "Container / Location",

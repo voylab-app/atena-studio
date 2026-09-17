@@ -718,13 +718,13 @@ impl McpManager {
                 server_name: "Atena Core (Memory & Episodes)".to_string(),
                 tool: McpToolDefinition {
                     name: "atena_search_memory".to_string(),
-                    description: Some("Queries facts, preferences, and relationships saved in Atena's permanent associative memory graph.".to_string()),
+                    description: Some("Queries facts, preferences, rules, and relationships saved in Atena's permanent associative memory graph. Provide the entity name, subject, or concept to retrieve matching knowledge nodes (e.g. 'moedor', 'coffee grinder', 'alergia', 'allergy').".to_string()),
                     input_schema: json!({
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Entity name, subject, or concept to query in memory"
+                                "description": "Entity name, subject, or concept to query in memory (in conversational language or keyword)"
                             }
                         },
                         "required": ["query"]

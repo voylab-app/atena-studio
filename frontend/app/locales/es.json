@@ -706,6 +706,8 @@
     "test_node_association_btn": "Probar Asociación de este Nodo",
     "reinforce_synapses": "Reforzar Sinapsis",
     "delete_node_tooltip": "Eliminar Nodo",
+    "node_content": "Contenido del Nodo",
+    "copy_content": "Copiar texto completo",
     "node_type_object": "Objeto",
     "node_type_action": "Acción",
     "node_type_container": "Contenedor / Ubicación",

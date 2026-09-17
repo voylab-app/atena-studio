@@ -36,3 +36,36 @@ fn test_forget_and_semantic_date_conflict_resolution() {
     assert!(maria_edges.iter().any(|e| e.target_id == gift));
     assert!(engine.find_node_by_label("Wedding: 01/09/2026").is_none());
 }
+
+#[test]
+fn test_cross_lingual_search_and_leaf_activation() {
+    let mut engine = MemoryGraphEngine::with_default_cache();
+
+    let ai_turn = r#"Adding allergy rule and coffee grinder.
+<memory subject="User" property="Rule: Allergy: Seafood (frutos do mar)" type="RuleOrAlert" valence="-1" />
+<memory subject="User" property="Coffee Grinder: Comandante C40 MK4 Nitro Blade manual grinder" type="Object" valence="1" />"#;
+    engine.extract_and_apply_memory_tags(ai_turn);
+
+    // 1. Spreading activation on "Allergy"
+    let paths = engine.traverse_associations("Allergy", 3).expect("Should find path");
+    assert!(!paths.is_empty(), "Paths should not be empty for Allergy query");
+    let llm_context = MemoryGraphEngine::build_llm_context(&paths);
+    assert!(!llm_context.contains("no association found"));
+    assert!(llm_context.contains("Allergy: Seafood"));
+
+    // 2. Cross-lingual search for "alergia" in Portuguese
+    let allergy_res = engine.search_active_context_for_query("alergia");
+    assert!(allergy_res.is_some(), "Search for 'alergia' should find 'Allergy: Seafood'");
+    assert!(allergy_res.unwrap().contains("Allergy"));
+
+    // 3. Cross-lingual search for "moedor" in Portuguese
+    let grinder_res = engine.search_active_context_for_query("moedor");
+    assert!(grinder_res.is_some(), "Search for 'moedor' should find 'Coffee Grinder'");
+    assert!(grinder_res.unwrap().contains("Comandante"));
+
+    // 4. Accent-tolerant search for "café" in Portuguese
+    let cafe_res = engine.search_active_context_for_query("café");
+    assert!(cafe_res.is_some(), "Search for 'café' with accent should find Coffee Grinder");
+    assert!(cafe_res.unwrap().contains("Comandante"));
+}
+

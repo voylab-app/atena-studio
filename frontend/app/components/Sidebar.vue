@@ -1241,7 +1241,9 @@ const filteredSessions = computed<Session[]>(() => {
   return [...list].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1
     if (!a.pinned && b.pinned) return 1
-    return 0
+    const timeA = new Date(a.updated_at || a.created_at || 0).getTime()
+    const timeB = new Date(b.updated_at || b.created_at || 0).getTime()
+    return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA)
   })
 })
 

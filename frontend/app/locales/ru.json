@@ -706,6 +706,8 @@
     "test_node_association_btn": "Тест ассоциаций",
     "reinforce_synapses": "Усилить синапсы",
     "delete_node_tooltip": "Забыть и удалить этот узел из графа",
+    "node_content": "Содержимое узла",
+    "copy_content": "Скопировать весь текст",
     "node_type_object": "Объект",
     "node_type_action": "Действие",
     "node_type_container": "Контейнер",

@@ -869,16 +869,19 @@ When the user mentions personal facts, family, friends, pets, preferences, plans
 Append concise XML tag(s) at the very end of your response:
 <memory subject="User|EntityName" property="Concise Fact or Relationship" type="Object" valence="1" />
 - subject: "User" for user-specific facts, or the specific person/entity name (e.g. "Maria").
-- property: Clear, concise statement (e.g. "Age: 30", "Born: April 1996", "Spouse: Carlos", "Daughter: Ana").
-- type: "Object" (default) or "RuleOrAlert" (strictly for negative rules/constraints to avoid, valence="-1").
+- property: Clear, concise statement in the SAME LANGUAGE as the conversation (e.g. in Portuguese: "Moedor de Café: Comandante C40", "Alergia: Frutos do mar", "Pet: Gato chamado Byte"; in English: "Coffee Grinder: Comandante C40", "Allergy: Seafood").
+- type: "Object" (default) or "RuleOrAlert" (strictly for negative rules/constraints/allergies to avoid, valence="-1").
 - valence: "1" (positive/reinforce), "0" (neutral), "-1" (inhibitory/avoid).
 - Do NOT memorize fleeting pleasantries, simple greetings, or temporary queries.
 
-2. FORGETTING & CORRECTING OBSOLETE DATA (<forget ... />):
+2. RETRIEVING & SEARCHING MEMORY:
+- When querying memory via `atena_search_memory` or `atena_search_episodes`, formulate query terms matching the concepts in the conversational language or keywords (e.g. "moedor", "café", "alergia", "coffee grinder", "allergy").
+
+3. FORGETTING & CORRECTING OBSOLETE DATA (<forget ... />):
 If you notice outdated, conflicting, or corrected records in [LATEST RECORDS IN YOUR BRAIN], append:
 <forget subject="EntityName" property="Fact or *" />
 
-3. REFERENCE DATE & TIME:
+4. REFERENCE DATE & TIME:
 - Today is: {} ({}) at {}.
 - Convert relative dates (e.g. "tomorrow", "next week", "yesterday") to absolute DD/MM/YYYY dates in your memory tags.
 "##,
