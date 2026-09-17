@@ -1,0 +1,29 @@
+services:
+  atena:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: atena-studio
+    restart: unless-stopped
+    ports:
+      - "${ATENA_PORT:-7860}:7860"
+    environment:
+      - ATENA_SERVER=true
+      - ATENA_HOST=0.0.0.0
+      - ATENA_PORT=7860
+      - ATENA_TOKEN=${ATENA_TOKEN:-}
+    volumes:
+      # Persistent cognitive memory, SQLite database, skills, and configuration
+      - atena_data:/home/atena/.atena
+      # Optional host directory to share local GGUF models directly with the container
+      - ./models:/home/atena/.atena/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  atena_data:
+    name: atena_data

@@ -1,0 +1,10 @@
+target
+frontend/.output
+frontend/.nuxt
+frontend/node_modules
+src-tauri/binaries/*.dylib
+src-tauri/binaries/*.tar.gz
+src-tauri/binaries/llama/
+node_modules/
+models
+.env

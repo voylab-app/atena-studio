@@ -1,0 +1,35 @@
+# Version control & OS artifacts
+.git
+.github
+.gitignore
+.DS_Store
+Thumbs.db
+
+# IDE & Editor configurations
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build outputs & dependencies
+target/
+src-tauri/target/
+node_modules/
+frontend/node_modules/
+frontend/.output/
+frontend/.nuxt/
+
+# macOS / Host-specific binaries & dynamic libraries
+src-tauri/binaries/*.dylib
+src-tauri/binaries/*.tar.gz
+src-tauri/binaries/*-apple-darwin*
+src-tauri/binaries/*-pc-windows*
+src-tauri/binaries/llama/
+
+# Local data & models
+models/
+*.gguf
+*.atena
+*.db
+*.sqlite
+*.log
