@@ -628,53 +628,64 @@ impl McpManager {
     /// Returns the native built-in tools of Atena (Episodic Memory, History Search, Graph Query)
     pub fn native_atena_tools() -> Vec<McpToolWithServer> {
         let mut f1 = std::collections::HashMap::new();
-        f1.insert("query".to_string(), "Termo de Busca".to_string());
-        f1.insert("limit".to_string(), "Limite Máximo".to_string());
+        f1.insert("query".to_string(), "Search Query".to_string());
+        f1.insert("limit".to_string(), "Max Limit".to_string());
 
         let mut f2 = std::collections::HashMap::new();
-        f2.insert("identifier".to_string(), "Identificador do Episódio".to_string());
+        f2.insert("identifier".to_string(), "Episode Identifier".to_string());
 
         let mut f3 = std::collections::HashMap::new();
-        f3.insert("query".to_string(), "Entidade / Termo".to_string());
+        f3.insert("query".to_string(), "Entity / Concept".to_string());
 
         let mut f4 = std::collections::HashMap::new();
-        f4.insert("name".to_string(), "Nome da Skill".to_string());
-        f4.insert("description".to_string(), "Descrição".to_string());
-        f4.insert("triggers".to_string(), "Gatilhos".to_string());
-        f4.insert("steps".to_string(), "Passos de Execução".to_string());
-        f4.insert("scripts".to_string(), "Scripts Automatizados".to_string());
+        f4.insert("name".to_string(), "Skill Name".to_string());
+        f4.insert("description".to_string(), "Description".to_string());
+        f4.insert("triggers".to_string(), "Triggers".to_string());
+        f4.insert("steps".to_string(), "Execution Steps".to_string());
+        f4.insert("scripts".to_string(), "Automated Scripts".to_string());
 
         let mut f5 = std::collections::HashMap::new();
-        f5.insert("id".to_string(), "Identificador da Skill".to_string());
-        f5.insert("name".to_string(), "Nome da Skill".to_string());
-        f5.insert("description".to_string(), "Descrição".to_string());
-        f5.insert("triggers".to_string(), "Gatilhos".to_string());
-        f5.insert("steps".to_string(), "Passos de Execução".to_string());
-        f5.insert("scripts".to_string(), "Scripts Automatizados".to_string());
-        f5.insert("refinement_note".to_string(), "Nota de Refinamento".to_string());
+        f5.insert("id".to_string(), "Skill Identifier".to_string());
+        f5.insert("name".to_string(), "Skill Name".to_string());
+        f5.insert("description".to_string(), "Description".to_string());
+        f5.insert("triggers".to_string(), "Triggers".to_string());
+        f5.insert("steps".to_string(), "Execution Steps".to_string());
+        f5.insert("scripts".to_string(), "Automated Scripts".to_string());
+        f5.insert("refinement_note".to_string(), "Refinement Note".to_string());
+
+        let mut f6 = std::collections::HashMap::new();
+        f6.insert("command".to_string(), "CLI Command".to_string());
+        f6.insert("timeout_ms".to_string(), "Timeout (ms)".to_string());
+
+        let mut f7 = std::collections::HashMap::new();
+        f7.insert("slug".to_string(), "Skill Identifier".to_string());
+        f7.insert("script_file".to_string(), "Script File".to_string());
+        f7.insert("file_name".to_string(), "Script File".to_string());
+        f7.insert("args".to_string(), "Arguments".to_string());
+        f7.insert("timeout_ms".to_string(), "Timeout (ms)".to_string());
 
         vec![
             McpToolWithServer {
                 server_id: "atena_native".to_string(),
-                server_name: "Atena Core (Memória & Episódios)".to_string(),
+                server_name: "Atena Core (Memory & Episodes)".to_string(),
                 tool: McpToolDefinition {
                     name: "atena_search_episodes".to_string(),
-                    description: Some("Busca no histórico de episódios cognitivos e conversas passadas da Atena por termos-chave, datas ou contexto.".to_string()),
+                    description: Some("Searches cognitive episodes and past conversation history by keywords, dates, or context.".to_string()),
                     input_schema: json!({
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Termos ou palavras-chave para pesquisar nos episódios gravados"
+                                "description": "Keywords or search terms for recorded episodes"
                             },
                             "limit": {
                                 "type": "integer",
-                                "description": "Limite máximo de episódios a retornar (padrão: 5)"
+                                "description": "Maximum number of episodes to return (default: 5)"
                             }
                         },
                         "required": ["query"]
                     }),
-                    label: Some("Buscar Episódios".to_string()),
+                    label: Some("Search Episodes".to_string()),
                     field_labels: f1,
                 },
                 enabled: true,
@@ -682,21 +693,21 @@ impl McpManager {
             },
             McpToolWithServer {
                 server_id: "atena_native".to_string(),
-                server_name: "Atena Core (Memória & Episódios)".to_string(),
+                server_name: "Atena Core (Memory & Episodes)".to_string(),
                 tool: McpToolDefinition {
                     name: "atena_read_episode".to_string(),
-                    description: Some("Lê o conteúdo completo de um episódio específico a partir do seu número ou ID de arquivo.".to_string()),
+                    description: Some("Reads the complete content of a specific cognitive episode from its number or filename.".to_string()),
                     input_schema: json!({
                         "type": "object",
                         "properties": {
                             "identifier": {
                                 "type": "string",
-                                "description": "Número do episódio (ex: '1', '12') ou nome do arquivo (ex: 'episodio_20260903_0012.md')"
+                                "description": "Episode number (e.g. '1', '12') or filename (e.g. 'episodio_20260903_0012.md')"
                             }
                         },
                         "required": ["identifier"]
                     }),
-                    label: Some("Ler Episódio".to_string()),
+                    label: Some("Read Episode".to_string()),
                     field_labels: f2,
                 },
                 enabled: true,
@@ -704,21 +715,21 @@ impl McpManager {
             },
             McpToolWithServer {
                 server_id: "atena_native".to_string(),
-                server_name: "Atena Core (Memória & Episódios)".to_string(),
+                server_name: "Atena Core (Memory & Episodes)".to_string(),
                 tool: McpToolDefinition {
                     name: "atena_search_memory".to_string(),
-                    description: Some("Consulta fatos, preferências e relacionamentos salvos no grafo de memória associativa permanente da Atena.".to_string()),
+                    description: Some("Queries facts, preferences, rules, and relationships saved in Atena's permanent associative memory graph. Provide the entity name, subject, or concept to retrieve matching knowledge nodes (e.g. 'moedor', 'coffee grinder', 'alergia', 'allergy').".to_string()),
                     input_schema: json!({
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Nome da entidade, sujeito ou conceito a consultar na memória"
+                                "description": "Entity name, subject, or concept to query in memory (in conversational language or keyword)"
                             }
                         },
                         "required": ["query"]
                     }),
-                    label: Some("Consultar Memória".to_string()),
+                    label: Some("Search Memory".to_string()),
                     field_labels: f3,
                 },
                 enabled: true,
@@ -729,53 +740,53 @@ impl McpManager {
                 server_name: "Procedural Skills".to_string(),
                 tool: McpToolDefinition {
                     name: "create_procedural_skill".to_string(),
-                    description: Some("Cria e registra uma nova habilidade/fluxo de trabalho procedural no Atena Studio, com gatilhos, passos sequenciais (comandos) e scripts opcionais (.sh, .py, .js).".to_string()),
+                    description: Some("Creates and registers a new procedural skill/workflow in Atena Studio, with triggers, sequential steps, and optional scripts (.sh, .py, .js).".to_string()),
                     input_schema: json!({
                         "type": "object",
                         "properties": {
                             "name": {
                                 "type": "string",
-                                "description": "Nome conciso e claro da habilidade procedural (ex: 'Tech News RSS', 'Disk Space Monitor')"
+                                "description": "Concise and clear name of the procedural skill (e.g. 'Tech News RSS', 'Disk Space Monitor')"
                             },
                             "description": {
                                 "type": "string",
-                                "description": "Explicação clara do objetivo e funcionamento da habilidade"
+                                "description": "Clear explanation of the skill objective and execution"
                             },
                             "triggers": {
                                 "type": "array",
                                 "items": { "type": "string" },
-                                "description": "Frases-chave, termos ou padrões que ativam essa habilidade quando o usuário solicitar"
+                                "description": "Trigger phrases or keywords activating this skill when requested by user"
                             },
                             "steps": {
                                 "type": "array",
                                 "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "order": { "type": "integer", "description": "Ordem sequencial do passo (1, 2, ...)" },
-                                        "instruction": { "type": "string", "description": "Instrução textual descrevendo a ação deste passo" },
-                                        "command": { "type": "string", "description": "Comando CLI a ser executado no terminal (opcional)" },
-                                        "script_file": { "type": "string", "description": "Nome do arquivo de script a ser executado na pasta scripts/ (opcional)" }
-                                    },
-                                    "required": ["order", "instruction"]
+                                     "type": "object",
+                                     "properties": {
+                                         "order": { "type": "integer", "description": "Sequential step order (1, 2, ...)" },
+                                         "instruction": { "type": "string", "description": "Textual instruction describing what this step does" },
+                                         "command": { "type": "string", "description": "CLI command to run in terminal (optional)" },
+                                         "script_file": { "type": "string", "description": "Script filename to execute inside scripts/ folder (optional)" }
+                                     },
+                                     "required": ["order", "instruction"]
                                 },
-                                "description": "Passos sequenciais de execução da habilidade"
+                                "description": "Sequential execution steps of the skill"
                             },
                             "scripts": {
                                 "type": "array",
                                 "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "filename": { "type": "string", "description": "Nome do arquivo de script (ex: 'fetch.py', 'audit.sh')" },
-                                        "content": { "type": "string", "description": "Código-fonte executável completo do script" }
-                                    },
-                                    "required": ["filename", "content"]
+                                     "type": "object",
+                                     "properties": {
+                                         "filename": { "type": "string", "description": "Script filename (e.g. 'fetch.py', 'audit.sh')" },
+                                         "content": { "type": "string", "description": "Full executable source code of the script" }
+                                     },
+                                     "required": ["filename", "content"]
                                 },
-                                "description": "Arquivos de script auxiliares criados em ~/.atena/skills/<slug>/scripts/"
+                                "description": "Auxiliary script files created in ~/.atena/skills/<slug>/scripts/"
                             }
                         },
                         "required": ["name", "description", "triggers", "steps"]
                     }),
-                    label: Some("Criar Habilidade Procedural".to_string()),
+                    label: Some("Create Procedural Skill".to_string()),
                     field_labels: f4,
                 },
                 enabled: true,
@@ -786,62 +797,123 @@ impl McpManager {
                 server_name: "Procedural Skills".to_string(),
                 tool: McpToolDefinition {
                     name: "update_procedural_skill".to_string(),
-                    description: Some("Edita, refina ou atualiza uma habilidade procedural existente no Atena Studio (modificando comandos, passos, gatilhos, scripts ou parâmetros).".to_string()),
+                    description: Some("Edits, refines, or updates an existing procedural skill in Atena Studio (modifying commands, steps, triggers, scripts, or parameters).".to_string()),
                     input_schema: json!({
                         "type": "object",
                         "properties": {
                             "id": {
                                 "type": "string",
-                                "description": "Identificador da habilidade a ser editada (ex: 'skill-tech-news-rss')"
+                                "description": "Identifier of the skill to edit (e.g. 'skill-tech-news-rss')"
                             },
                             "name": {
                                 "type": "string",
-                                "description": "Nome da habilidade a ser atualizada (usado para localizar a skill caso o ID não seja informado, ou para renomeá-la)"
+                                "description": "Skill name to update (used to locate skill if ID is not provided, or to rename it)"
                             },
                             "description": {
                                 "type": "string",
-                                "description": "Descrição atualizada do funcionamento da habilidade"
+                                "description": "Updated explanation of the skill functionality"
                             },
                             "triggers": {
                                 "type": "array",
                                 "items": { "type": "string" },
-                                "description": "Lista atualizada de gatilhos/palavras-chave"
+                                "description": "Updated list of trigger phrases or keywords"
                             },
                             "steps": {
                                 "type": "array",
                                 "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "order": { "type": "integer", "description": "Ordem sequencial do passo (1, 2, ...)" },
-                                        "instruction": { "type": "string", "description": "Instrução textual descrevendo a ação do passo" },
-                                        "command": { "type": "string", "description": "Comando CLI a ser executado" },
-                                        "script_file": { "type": "string", "description": "Nome do arquivo de script a ser executado" }
-                                    },
-                                    "required": ["order", "instruction"]
+                                     "type": "object",
+                                     "properties": {
+                                         "order": { "type": "integer", "description": "Sequential step order (1, 2, ...)" },
+                                         "instruction": { "type": "string", "description": "Textual instruction describing what this step does" },
+                                         "command": { "type": "string", "description": "CLI command to run" },
+                                         "script_file": { "type": "string", "description": "Script filename to execute" }
+                                     },
+                                     "required": ["order", "instruction"]
                                 },
-                                "description": "Passos sequenciais de execução atualizados"
+                                "description": "Updated sequential execution steps"
                             },
                             "scripts": {
                                 "type": "array",
                                 "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "filename": { "type": "string", "description": "Nome do arquivo de script" },
-                                        "content": { "type": "string", "description": "Código-fonte atualizado do script" }
-                                    },
-                                    "required": ["filename", "content"]
+                                     "type": "object",
+                                     "properties": {
+                                         "filename": { "type": "string", "description": "Script filename" },
+                                         "content": { "type": "string", "description": "Updated source code of the script" }
+                                     },
+                                     "required": ["filename", "content"]
                                 },
-                                "description": "Arquivos de script atualizados ou novos"
+                                "description": "Updated or new script files"
                             },
                             "refinement_note": {
                                 "type": "string",
-                                "description": "Nota ou resumo explicando as alterações e melhorias realizadas nesta revisão"
+                                "description": "Note or summary explaining the modifications and improvements made in this revision"
                             }
                         },
                         "required": ["name"]
                     }),
-                    label: Some("Editar Habilidade Procedural".to_string()),
+                    label: Some("Edit Procedural Skill".to_string()),
                     field_labels: f5,
+                },
+                enabled: true,
+                permission_mode: "ask".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "skills".to_string(),
+                server_name: "Procedural Skills".to_string(),
+                tool: McpToolDefinition {
+                    name: "run_command".to_string(),
+                    description: Some("Executes a terminal CLI command associated with a procedural skill or system diagnostic.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": "Exact CLI command to execute in operating system terminal"
+                            },
+                            "timeout_ms": {
+                                "type": "integer",
+                                "description": "Execution timeout in milliseconds (optional, default: 120000)"
+                            }
+                        },
+                        "required": ["command"]
+                    }),
+                    label: Some("Run Command".to_string()),
+                    field_labels: f6,
+                },
+                enabled: true,
+                permission_mode: "ask".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "skills".to_string(),
+                server_name: "Procedural Skills".to_string(),
+                tool: McpToolDefinition {
+                    name: "run_skill_script".to_string(),
+                    description: Some("Executes a script file (.py, .js, .sh, etc.) located in the scripts/ folder of the specified procedural skill.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "slug": {
+                                "type": "string",
+                                "description": "Slug or ID of the procedural skill (e.g. 'tech-news-rss', 'skill-tech-news-rss')"
+                            },
+                            "script_file": {
+                                "type": "string",
+                                "description": "Exact name of script file inside skill scripts/ folder (e.g. 'fetch_news.py')"
+                            },
+                            "args": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Optional command line arguments to pass to the script"
+                            },
+                            "timeout_ms": {
+                                "type": "integer",
+                                "description": "Execution timeout in milliseconds (optional, default: 180000)"
+                            }
+                        },
+                        "required": ["slug", "script_file"]
+                    }),
+                    label: Some("Run Skill Script".to_string()),
+                    field_labels: f7,
                 },
                 enabled: true,
                 permission_mode: "ask".to_string(),

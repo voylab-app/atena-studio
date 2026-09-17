@@ -1886,16 +1886,45 @@ const executeTool = async (toolCall: any, assistantMsg: any, force = false) => {
           scripts,
           envVars
         })
-      } else if (targetTool.name === 'run_skill_script' || rawArgs.script_file || rawArgs.script) {
-        const scriptFile = rawArgs.script_file || rawArgs.script || ''
-        const slug = rawArgs.slug || targetTool.arguments?.slug || ''
+      } else if (targetTool.name === 'run_skill_script' || rawArgs.script_file || rawArgs.script || rawArgs.file_name) {
+        const scriptName =
+          rawArgs.scriptName ||
+          rawArgs.script_name ||
+          rawArgs.script_file ||
+          rawArgs.script ||
+          rawArgs.file_name ||
+          rawArgs.fileName ||
+          rawArgs.filename ||
+          targetTool.arguments?.scriptName ||
+          targetTool.arguments?.script_name ||
+          targetTool.arguments?.script_file ||
+          targetTool.arguments?.script ||
+          targetTool.arguments?.file_name ||
+          targetTool.arguments?.fileName ||
+          targetTool.arguments?.filename ||
+          ''
+        const skillId =
+          rawArgs.skillId ||
+          rawArgs.skill_id ||
+          rawArgs.slug ||
+          rawArgs.id ||
+          targetTool.arguments?.skillId ||
+          targetTool.arguments?.skill_id ||
+          targetTool.arguments?.slug ||
+          targetTool.arguments?.id ||
+          ''
         const args = Array.isArray(rawArgs.args)
           ? rawArgs.args.map((a: any) => String(a))
           : (rawArgs.args ? [String(rawArgs.args)] : [])
+        const timeoutMs = rawArgs.timeout_ms || rawArgs.timeoutMs || undefined
+
         result = await invoke('skills_run_script', {
-          slug,
-          scriptFile,
-          args
+          skillId,
+          slug: skillId,
+          scriptName,
+          scriptFile: scriptName,
+          args,
+          timeoutMs
         })
       } else {
         const command = rawArgs.command || rawArgs.cmd || (typeof rawArgs === 'string' ? rawArgs : '')
@@ -1928,7 +1957,9 @@ const executeTool = async (toolCall: any, assistantMsg: any, force = false) => {
               })
             } else if (scriptStep && scriptStep.script_file) {
               result = await invoke('skills_run_script', {
+                skillId: matchedSkill.id,
                 slug: matchedSkill.id,
+                scriptName: scriptStep.script_file,
                 scriptFile: scriptStep.script_file,
                 args: []
               })
@@ -1983,12 +2014,40 @@ const processAutoTools = async (assistantMsg: any) => {
     if (raw) alwaysAllowedCmds = JSON.parse(raw)
   } catch {}
 
+  // Check procedural skills permissions
+  let allSkills: any[] = []
+  try {
+    const fetched = await invoke<any[]>('skills_get_all')
+    if (Array.isArray(fetched)) allSkills = fetched
+  } catch {}
+
   for (const tc of assistantMsg.tool_calls) {
     if (tc.status === 'pending_approval') {
       const rawArgs = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments || '{}') : (tc.arguments || {})
       const cmd = (rawArgs.command || rawArgs.cmd || '').trim()
       if (cmd && alwaysAllowedCmds.includes(cmd)) {
         tc.permission_mode = 'auto'
+        continue
+      }
+
+      if (tc.server_id === 'skills' || tc.name === 'run_command' || tc.name === 'run_skill_command' || tc.name === 'run_skill_script') {
+        const slug = (rawArgs.slug || rawArgs.skillId || rawArgs.skill_id || rawArgs.id || '').trim().toLowerCase()
+        const script = (rawArgs.script_file || rawArgs.script || rawArgs.script_name || rawArgs.file_name || '').trim().toLowerCase()
+
+        const matchedSkill = allSkills.find((s: any) => {
+          const sId = (s.id || '').toLowerCase()
+          const sName = (s.name || '').toLowerCase()
+          const cleanSId = sId.replace(/^skill-/, '')
+          const cleanSlug = slug.replace(/^skill-/, '')
+          if (slug && (sId === slug || sName === slug || cleanSId === cleanSlug || sId === `skill-${cleanSlug}`)) return true
+          if (cmd && s.steps?.some((st: any) => st.command === cmd)) return true
+          if (script && (s.scripts?.some((sc: string) => sc.toLowerCase() === script) || s.steps?.some((st: any) => st.script_file?.toLowerCase() === script))) return true
+          return false
+        })
+
+        if (matchedSkill?.permission_mode === 'auto') {
+          tc.permission_mode = 'auto'
+        }
       }
     }
   }

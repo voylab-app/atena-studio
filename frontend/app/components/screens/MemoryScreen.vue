@@ -1,10 +1,10 @@
 <template>
   <div class="h-full flex flex-col bg-[#090a0f] overflow-hidden relative select-none">
     <!-- Top Stats & Controls Header Bar (Fully Responsive) -->
-    <div class="px-3 sm:px-5 py-2.5 bg-[#0e111d]/95 backdrop-blur-md border-b border-[#1b2135] flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0">
+    <div class="px-3 sm:px-5 py-2.5 bg-[#0e111d]/95 backdrop-blur-md border-b border-[#1b2135] flex items-center justify-between gap-2 sm:gap-3 z-20 shrink-0 min-w-0 overflow-x-auto no-scrollbar">
       <!-- Left: Title & Tab Switcher -->
       <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-teal-500/20 border border-indigo-500/30 flex items-center justify-center shadow-md shrink-0">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-teal-500/20 border border-indigo-500/30 flex items-center justify-center shadow-md shrink-0" :title="$t('memory.neural_network_title')">
           <Brain class="w-4 h-4 text-indigo-400" />
         </div>
         <div class="hidden 2xl:block">
@@ -22,25 +22,27 @@
             @click="activeMemoryTab = 'graph'"
             class="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
             :class="activeMemoryTab === 'graph' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            :title="$t('memory.tab_facts_network')"
           >
             <span
               class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors"
               :class="isFactsActive ? 'bg-emerald-400' : 'bg-amber-400/80'"
             />
             <Network class="w-3.5 h-3.5 shrink-0" />
-            <span>{{ $t('memory.tab_facts_network') }}</span>
+            <span class="hidden md:inline">{{ $t('memory.tab_facts_network') }}</span>
           </button>
           <button
             @click="activeMemoryTab = 'skills'"
             class="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
             :class="activeMemoryTab === 'skills' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            :title="$t('memory.tab_skills')"
           >
             <span
               class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors"
               :class="isSkillsActive ? 'bg-emerald-400' : 'bg-amber-400/80'"
             />
             <Wrench class="w-3.5 h-3.5 shrink-0" />
-            <span>{{ $t('memory.tab_skills') }}</span>
+            <span class="hidden md:inline">{{ $t('memory.tab_skills') }}</span>
             <span
               v-if="skillsList.length > 0"
               class="px-1.5 py-0.2 text-[9px] font-mono font-bold rounded-full"
@@ -53,13 +55,14 @@
             @click="activeMemoryTab = 'episodes'"
             class="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
             :class="activeMemoryTab === 'episodes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            :title="$t('memory.tab_diary')"
           >
             <span
               class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors"
               :class="isEpisodesActive ? 'bg-emerald-400' : 'bg-amber-400/80'"
             />
             <BookOpen class="w-3.5 h-3.5 shrink-0" />
-            <span>{{ $t('memory.tab_diary') }}</span>
+            <span class="hidden md:inline">{{ $t('memory.tab_diary') }}</span>
             <span
               v-if="episodesList.length > 0"
               class="px-1.5 py-0.2 text-[9px] font-mono font-bold rounded-full"
@@ -71,9 +74,9 @@
         </div>
 
         <!-- Active Layer Inference Toggle -->
-        <div class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 bg-[#101424] border border-[#202740] rounded-xl shadow-sm shrink-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 bg-[#101424] border border-[#202740] rounded-xl shadow-sm shrink-0" :title="isCurrentLayerActive ? $t('memory.tooltip_pause_layer') : $t('memory.tooltip_activate_layer')">
           <span
-            class="text-[10.5px] font-semibold hidden md:inline select-none"
+            class="text-[10.5px] font-semibold hidden 2xl:inline select-none"
             :class="isCurrentLayerActive ? 'text-emerald-400' : 'text-amber-400'"
           >
             {{ isCurrentLayerActive ? $t('memory.layer_active_badge') : $t('memory.layer_paused_badge') }}
@@ -83,7 +86,6 @@
             role="switch"
             :aria-checked="isCurrentLayerActive"
             @click="toggleCurrentLayer"
-            :title="isCurrentLayerActive ? $t('memory.tooltip_pause_layer') : $t('memory.tooltip_activate_layer')"
             :class="[
               'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
               isCurrentLayerActive ? 'bg-emerald-600 shadow-sm shadow-emerald-600/30' : 'bg-[#22283b]'
@@ -99,8 +101,8 @@
         </div>
       </div>
 
-      <!-- Center: Key Metrics Capsule (Only on very wide screens) -->
-      <div class="hidden 2xl:flex items-center gap-2 bg-[#121626] px-2.5 py-1 rounded-xl border border-[#202740] shadow-sm shrink-0">
+      <!-- Center: Key Metrics Capsule (On very wide screens and only for graph) -->
+      <div v-if="activeMemoryTab === 'graph'" class="hidden 2xl:flex items-center gap-2 bg-[#121626] px-2.5 py-1 rounded-xl border border-[#202740] shadow-sm shrink-0">
         <div class="flex items-center gap-1.5 px-2 border-r border-[#202740]">
           <CircleDot class="w-3.5 h-3.5 text-indigo-400" />
           <span class="text-[11px] text-slate-400 font-medium">{{ $t('memory.stat_nodes') }}</span>
@@ -120,45 +122,48 @@
 
       <!-- Right: Action Buttons -->
       <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-        <!-- Optimize & Prune -->
+        <!-- Optimize & Prune (Graph only) -->
         <button
+          v-if="activeMemoryTab === 'graph'"
           @click="handleOptimizeAndPruneGraph"
           :disabled="isOptimizingGraph"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#14192b] hover:bg-[#1c233d] border border-purple-500/30 hover:border-purple-500/60 text-purple-300 hover:text-purple-200 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+          class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#14192b] hover:bg-[#1c233d] border border-purple-500/30 hover:border-purple-500/60 text-purple-300 hover:text-purple-200 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
           :title="$t('memory.tooltip_optimize_prune')"
         >
           <Scissors class="w-3.5 h-3.5 text-purple-400" :class="{ 'animate-spin': isOptimizingGraph }" />
-          <span class="hidden md:inline">{{ $t('memory.btn_optimize_prune') }}</span>
+          <span class="hidden 2xl:inline">{{ $t('memory.btn_optimize_prune') }}</span>
         </button>
 
         <!-- Action Button based on active tab -->
         <button
           v-if="activeMemoryTab === 'graph'"
           @click="openLearnModal()"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 border border-indigo-400/30 transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+          class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 border border-indigo-400/30 transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+          :title="$t('memory.btn_teach_fact')"
         >
           <Plus class="w-3.5 h-3.5" />
-          <span class="hidden sm:inline">{{ $t('memory.btn_teach_fact') }}</span>
+          <span class="hidden 2xl:inline">{{ $t('memory.btn_teach_fact') }}</span>
         </button>
         <button
-          v-else
+          v-else-if="activeMemoryTab === 'skills'"
           @click="openNewSkillModal()"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 border border-indigo-400/30 transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+          class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 border border-indigo-400/30 transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+          :title="$t('memory.btn_new_skill')"
         >
           <Plus class="w-3.5 h-3.5" />
-          <span class="hidden sm:inline">{{ $t('memory.btn_new_skill') }}</span>
+          <span class="hidden 2xl:inline">{{ $t('memory.btn_new_skill') }}</span>
         </button>
 
-        <!-- Export Graph Dropdown -->
+        <!-- Export Graph Dropdown (Graph only) -->
         <div v-if="activeMemoryTab === 'graph'" class="relative shrink-0">
           <button
             @click="showExportMenu = !showExportMenu"
             :disabled="isExporting || graphData.nodes.length === 0"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#14192b] hover:bg-[#1c233d] border border-teal-500/30 hover:border-teal-500/60 text-teal-300 hover:text-teal-200 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0 disabled:opacity-40"
+            class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#14192b] hover:bg-[#1c233d] border border-teal-500/30 hover:border-teal-500/60 text-teal-300 hover:text-teal-200 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0 disabled:opacity-40"
             :title="$t('memory.tooltip_export')"
           >
             <Download class="w-3.5 h-3.5 text-teal-400" :class="{ 'animate-bounce': isExporting }" />
-            <span class="hidden md:inline">{{ isExporting ? $t('memory.exporting') : $t('memory.export') }}</span>
+            <span class="hidden 2xl:inline">{{ isExporting ? $t('memory.exporting') : $t('memory.export') }}</span>
           </button>
 
           <!-- Dropdown Menu -->
@@ -183,16 +188,17 @@
           </div>
         </div>
 
-        <!-- Reload Graph -->
+        <!-- Reload (Refreshes active tab: graph, skills, or episodes) -->
         <button
-          @click="fetchGraph"
-          class="p-1.5 sm:p-2 rounded-xl bg-[#14192b] hover:bg-[#1c233d] border border-[#222b48] hover:border-indigo-500/40 text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+          @click="handleReloadActiveTab"
+          :disabled="isCurrentTabLoading"
+          class="p-1.5 sm:p-2 rounded-xl bg-[#14192b] hover:bg-[#1c233d] border border-[#222b48] hover:border-indigo-500/40 text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
           :title="$t('memory.reload')"
         >
-          <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': isRefreshing }" />
+          <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': isCurrentTabLoading }" />
         </button>
 
-        <!-- Clear Memory (Open Custom Modal) -->
+        <!-- Clear Memory (Graph only) -->
         <button
           v-if="activeMemoryTab === 'graph'"
           @click="isConfirmResetModalOpen = true"
@@ -224,7 +230,7 @@
     <!-- Main Workspace (Canvas + Side Inspection Panel + Hippocampus Drawer) -->
     <div v-show="activeMemoryTab === 'graph'" class="flex-1 flex overflow-hidden relative">
       <!-- Search and Filter Floating Overlay -->
-      <div class="absolute top-4 left-4 z-10 flex flex-col gap-2 max-w-md w-full">
+      <div class="absolute top-4 left-4 z-10 flex flex-col gap-2 w-[calc(100%-2rem)] max-w-xs sm:max-w-sm md:max-w-md">
         <div class="flex items-center gap-2 w-full">
           <div class="flex-1 relative">
             <Search class="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -338,7 +344,7 @@
               class="px-2 py-0.5 rounded-lg border transition-all cursor-pointer"
               :class="typeFilter === 'all' ? 'bg-indigo-600 text-white border-indigo-500 font-semibold shadow-sm' : 'bg-[#14192b] text-slate-400 border-[#222b48] hover:text-white'"
             >
-              Todos
+              {{ $t('memory.filter_all') }}
             </button>
             <button
               @click="typeFilter = 'object'"
@@ -386,8 +392,11 @@
       </div>
 
       <!-- Spreading Activation Test Tool Floating Bar (Dismissible) -->
-      <div v-if="showActivationPanel" class="absolute bottom-4 left-4 z-10 bg-[#0e1220]/95 backdrop-blur-xl border border-[#222b48] rounded-2xl p-3.5 shadow-2xl max-w-md w-full animate-in fade-in zoom-in-95 duration-150">
-        <div class="flex items-center justify-between mb-2">
+      <div
+        v-if="showActivationPanel"
+        class="absolute bottom-4 left-4 z-10 bg-[#0e1220]/95 backdrop-blur-xl border border-[#222b48] rounded-2xl p-3.5 shadow-2xl max-w-md w-[calc(100%-2rem)] sm:w-full max-h-[calc(100%-2rem)] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      >
+        <div class="flex items-center justify-between mb-2 shrink-0">
           <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
             <Radio class="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
             {{ $t('memory.test_association_title') }}
@@ -405,20 +414,20 @@
         </div>
 
         <!-- Quick Real Example Chips from Loaded Graph -->
-        <div v-if="suggestedNodes.length > 0" class="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-0.5">
+        <div v-if="suggestedNodes.length > 0" class="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-0.5 shrink-0 no-scrollbar">
           <span class="text-[10px] text-slate-400 shrink-0 font-medium">{{ $t('memory.real_examples_label') }}</span>
           <button
             v-for="sNode in suggestedNodes"
             :key="sNode.id"
             @click="testWithNode(sNode.label)"
-            class="px-2 py-0.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/30 border border-indigo-500/30 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer whitespace-nowrap active:scale-95 hover:border-indigo-400/60"
+            class="px-2 py-0.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/30 border border-indigo-500/30 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer whitespace-nowrap active:scale-95 hover:border-indigo-400/60 shrink-0"
             :title="$t('memory.test_node_tooltip', { label: sNode.label })"
           >
             {{ sNode.label }}
           </button>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex gap-2 shrink-0">
           <input
             v-model="activationAnchor"
             type="text"
@@ -429,7 +438,7 @@
           <button
             @click="handleTestActivation"
             :disabled="!activationAnchor.trim() || isActivating"
-            class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-md shadow-indigo-600/20"
+            class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-md shadow-indigo-600/20 shrink-0"
           >
             <Play class="w-3 h-3" />
             <span>{{ $t('memory.test_btn') }}</span>
@@ -437,12 +446,14 @@
         </div>
 
         <!-- Synthesized LLM Result Preview -->
-        <div v-if="synthesizedContext" class="mt-2.5 p-2.5 rounded-xl bg-[#121626] border border-indigo-500/30 text-[11px] text-indigo-200 font-mono leading-relaxed">
-          <div class="text-[9.5px] text-slate-400 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">
+        <div v-if="synthesizedContext" class="mt-2.5 p-2.5 rounded-xl bg-[#121626] border border-indigo-500/30 text-[11px] text-indigo-200 font-mono leading-relaxed flex flex-col min-h-0 flex-1 overflow-hidden">
+          <div class="text-[9.5px] text-slate-400 font-bold uppercase tracking-wider mb-1 flex items-center justify-between shrink-0">
             <span>{{ $t('memory.injected_context_title') }}</span>
             <span class="text-[9px] text-emerald-400 font-bold">{{ $t('memory.active_in_ai') }}</span>
           </div>
-          {{ synthesizedContext }}
+          <div class="overflow-y-auto max-h-40 sm:max-h-52 pr-1 select-text break-words whitespace-pre-wrap leading-relaxed text-[10.5px]">
+            {{ synthesizedContext }}
+          </div>
         </div>
       </div>
 
@@ -482,6 +493,30 @@
             {{ $t('memory.empty_memory_desc') }}
           </p>
         </div>
+
+        <!-- Canvas Bottom-Right Telemetry HUD Pill (Always visible across all resolutions) -->
+        <div
+          class="absolute bottom-4 z-10 hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-[#0e1220]/85 backdrop-blur-md border border-[#222b48] shadow-xl text-xs transition-all duration-200 select-none pointer-events-auto"
+          :class="selectedNode ? 'right-4 sm:right-[336px]' : 'right-4'"
+        >
+          <div class="flex items-center gap-1.5" :title="$t('memory.stat_nodes')">
+            <CircleDot class="w-3.5 h-3.5 text-indigo-400" />
+            <span class="text-[11px] text-slate-400 font-medium hidden md:inline">{{ $t('memory.stat_nodes') }}</span>
+            <span class="text-xs font-mono font-bold text-slate-100">{{ stats.total_nodes }}</span>
+          </div>
+          <div class="h-3 w-px bg-[#202740]"></div>
+          <div class="flex items-center gap-1.5" :title="$t('memory.stat_synapses')">
+            <Share2 class="w-3.5 h-3.5 text-purple-400" />
+            <span class="text-[11px] text-slate-400 font-medium hidden md:inline">{{ $t('memory.stat_synapses') }}</span>
+            <span class="text-xs font-mono font-bold text-slate-100">{{ stats.total_edges }}</span>
+          </div>
+          <div class="h-3 w-px bg-[#202740]"></div>
+          <div class="flex items-center gap-1.5" :title="$t('memory.stat_hit')">
+            <Zap class="w-3.5 h-3.5 text-teal-400" />
+            <span class="text-[11px] text-slate-400 font-medium hidden md:inline">{{ $t('memory.stat_hit') }}</span>
+            <span class="text-xs font-mono font-bold text-teal-300">{{ stats.cache_hit_rate.toFixed(0) }}%</span>
+          </div>
+        </div>
       </div>
 
       <!-- Right Inspection Sidebar (Details of Selected Node) -->
@@ -495,7 +530,7 @@
       >
         <div
           v-if="selectedNode"
-          class="w-80 h-full bg-[#0d101c]/98 backdrop-blur-2xl border-l border-[#1b2135] p-4 flex flex-col gap-4 overflow-y-auto z-20 shadow-2xl shrink-0"
+          class="w-80 sm:w-84 max-w-full h-full bg-[#0d101c]/98 backdrop-blur-2xl border-l border-[#1b2135] p-4 flex flex-col gap-4 overflow-y-auto z-20 shadow-2xl shrink-0"
         >
           <!-- Node Header -->
           <div class="flex items-start justify-between gap-2">
@@ -507,7 +542,7 @@
                 <Component :is="getNodeIcon(selectedNode.type_flag, selectedNode.valence)" class="w-4 h-4" />
               </div>
               <div class="min-w-0 flex-1">
-                <h4 class="text-xs font-bold text-slate-100 leading-tight truncate">{{ selectedNode.label }}</h4>
+                <h4 class="text-xs font-bold text-slate-100 leading-snug break-words max-h-16 overflow-y-auto select-text">{{ selectedNode.label }}</h4>
                 <span class="text-[10px] font-mono font-medium text-slate-400">ID: {{ selectedNode.id }}</span>
               </div>
             </div>
@@ -544,6 +579,28 @@
             >
               {{ $t('memory.inhibition_valence') }}
             </span>
+          </div>
+
+          <!-- Full Node Content / Fact Details Card -->
+          <div class="p-3 rounded-xl bg-[#101424] border border-[#202740] space-y-1.5 shadow-inner">
+            <div class="flex items-center justify-between text-[10px] uppercase font-bold tracking-wider text-slate-400">
+              <span class="flex items-center gap-1.5">
+                <FileText class="w-3.5 h-3.5 text-indigo-400" />
+                {{ $t('memory.node_content') }}
+              </span>
+              <button
+                @click="copyNodeText(selectedNode.label)"
+                class="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 transition-all cursor-pointer text-[9.5px]"
+                :title="$t('memory.copy_content')"
+              >
+                <Check v-if="isNodeCopied" class="w-3 h-3 text-emerald-400" />
+                <Copy v-else class="w-3 h-3" />
+                <span>{{ isNodeCopied ? $t('common.copied') : $t('common.copy') }}</span>
+              </button>
+            </div>
+            <div class="text-xs text-slate-100 font-medium leading-relaxed break-words select-text max-h-48 overflow-y-auto pr-1">
+              {{ selectedNode.label }}
+            </div>
           </div>
 
           <!-- Node Creation Timestamp -->
@@ -598,8 +655,9 @@
                 </span>
                 <span class="text-[10px] font-mono text-teal-400 font-bold">{{ $t('memory.weight_label', { weight: (edge.weight || 1).toFixed(2) }) }}</span>
               </div>
-              <div class="text-xs text-slate-200 font-medium truncate">
-                ➔ {{ getNodeLabel(edge.target_id) }}
+              <div class="text-xs text-slate-200 font-medium break-words flex items-center gap-1.5">
+                <span v-if="edge.source_id === selectedNode.id">➔ {{ getNodeLabel(edge.target_id) }}</span>
+                <span v-else class="text-indigo-300">⬅ {{ getNodeLabel(edge.source_id) }}</span>
               </div>
               <div class="flex items-center justify-between text-[9.5px] text-slate-400 font-mono pt-1.5 border-t border-[#1b2135]">
                 <span>{{ $t('memory.access_count', { count: edge.access_count || 0 }) }}</span>
@@ -656,8 +714,8 @@
           </p>
         </div>
 
-        <div class="flex items-center gap-3">
-          <div class="relative w-56">
+        <div class="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+          <div class="relative w-full sm:w-56">
             <Search class="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               v-model="skillSearchQuery"
@@ -710,19 +768,27 @@
           >
             <div class="space-y-3">
               <!-- Card Header -->
-              <div class="flex items-start justify-between gap-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
-                    <Wrench class="w-4 h-4" />
+              <div class="space-y-2.5">
+                <div class="flex items-start justify-between gap-2.5">
+                  <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
+                      <Wrench class="w-4 h-4" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <h4 class="text-sm font-bold text-slate-100 group-hover:text-indigo-300 transition-colors truncate" :title="skill.name">
+                        {{ skill.name }}
+                      </h4>
+                      <span class="text-[10px] text-slate-500 font-mono block">{{ formatTimestamp(skill.last_refined_at) }}</span>
+                    </div>
                   </div>
-                  <div>
-                    <h4 class="text-sm font-bold text-slate-100 group-hover:text-indigo-300 transition-colors">{{ skill.name }}</h4>
-                    <span class="text-[10px] text-slate-500 font-mono">{{ formatTimestamp(skill.last_refined_at) }}</span>
-                  </div>
+
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0 self-start">
+                    v{{ skill.version }}.0 {{ skill.version > 1 ? $t('memory.skill_refined') : $t('memory.skill_initial') }}
+                  </span>
                 </div>
 
-                <!-- Badges -->
-                <div class="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                <!-- Status & Permission Badges Bar -->
+                <div class="flex items-center gap-1.5 flex-wrap">
                   <!-- Permission Mode Toggle Badge (Ask vs Auto) -->
                   <button
                     @click.stop="toggleSkillPermission(skill)"
@@ -742,9 +808,6 @@
                     class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30"
                   >
                     📁 {{ $t('memory.skill_has_scripts', { count: skill.scripts.length }) }}
-                  </span>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    v{{ skill.version }}.0 {{ skill.version > 1 ? $t('memory.skill_refined') : $t('memory.skill_initial') }}
                   </span>
                 </div>
               </div>
@@ -895,7 +958,7 @@
     <!-- Main Workspace: Captain's Log in Markdown -->
     <div v-show="activeMemoryTab === 'episodes'" class="flex-1 flex overflow-hidden bg-[#07080d]">
       <!-- Left Column: Log Pages List -->
-      <div class="w-80 sm:w-96 shrink-0 border-r border-[#1a2139] flex flex-col bg-[#0b0e1b] overflow-hidden">
+      <div class="w-72 md:w-80 lg:w-96 shrink-0 border-r border-[#1a2139] flex flex-col bg-[#0b0e1b] overflow-hidden">
         <!-- List Header -->
         <div class="p-3.5 border-b border-[#1a2139] bg-[#0d1020]/60 space-y-3">
           <div class="flex items-center justify-between">
@@ -1416,7 +1479,7 @@
       v-if="isNewSkillModalOpen"
       class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
     >
-      <div class="bg-[#0f1220] border border-[#242c48] rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="bg-[#0f1220] border border-[#242c48] rounded-2xl max-w-3xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
         <div class="flex items-center justify-between shrink-0">
           <div class="flex items-center gap-2">
             <Wrench class="w-5 h-5 text-indigo-400" />
@@ -1444,7 +1507,7 @@
           {{ $t('memory.skill_modal_desc') }}
         </p>
 
-        <div class="space-y-3 overflow-y-auto pr-1 flex-1">
+        <div class="space-y-4 overflow-y-auto pr-2 flex-1 min-h-0 custom-scrollbar">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">{{ $t('memory.skill_name_label') }}</label>
@@ -1478,40 +1541,38 @@
           </div>
 
           <!-- Permission Mode Selector (Ask vs Auto) -->
-          <div class="p-3 rounded-xl bg-[#14192b] border border-[#242e4d] space-y-2">
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">{{ $t('memory.skill_perm_title') }}</label>
-                <p class="text-[10.5px] text-slate-400 mt-0.5">{{ $t('memory.skill_perm_desc') }}</p>
-              </div>
-              <div class="flex items-center gap-1.5 p-1 bg-[#0e1220] rounded-lg border border-[#202740]">
-                <button
-                  type="button"
-                  @click="newSkillForm.permission_mode = 'ask'"
-                  :class="[
-                    'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
-                    newSkillForm.permission_mode !== 'auto'
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  ]"
-                >
-                  <ShieldCheck class="w-3 h-3" />
-                  <span>{{ $t('memory.skill_perm_ask') }}</span>
-                </button>
-                <button
-                  type="button"
-                  @click="newSkillForm.permission_mode = 'auto'"
-                  :class="[
-                    'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
-                    newSkillForm.permission_mode === 'auto'
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  ]"
-                >
-                  <Zap class="w-3 h-3" />
-                  <span>{{ $t('memory.skill_perm_auto') }}</span>
-                </button>
-              </div>
+          <div class="p-3.5 rounded-xl bg-[#14192b] border border-[#242e4d] flex items-center justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">{{ $t('memory.skill_perm_title') }}</label>
+              <p class="text-[10.5px] text-slate-400 mt-0.5">{{ $t('memory.skill_perm_desc') }}</p>
+            </div>
+            <div class="flex items-center gap-1.5 p-1 bg-[#0e1220] rounded-lg border border-[#202740] shrink-0">
+              <button
+                type="button"
+                @click="newSkillForm.permission_mode = 'ask'"
+                :class="[
+                  'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
+                  newSkillForm.permission_mode !== 'auto'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                ]"
+              >
+                <ShieldCheck class="w-3 h-3" />
+                <span>{{ $t('memory.skill_perm_ask') }}</span>
+              </button>
+              <button
+                type="button"
+                @click="newSkillForm.permission_mode = 'auto'"
+                :class="[
+                  'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
+                  newSkillForm.permission_mode === 'auto'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                ]"
+              >
+                <Zap class="w-3 h-3" />
+                <span>{{ $t('memory.skill_perm_auto') }}</span>
+              </button>
             </div>
           </div>
 
@@ -1979,6 +2040,7 @@ const activeMemoryTab = ref<'graph' | 'skills' | 'episodes'>('graph')
 const skillsList = ref<SkillItem[]>([])
 const editingSkillId = ref<string | null>(null)
 const skillSearchQuery = ref('')
+const isSkillsLoading = ref(false)
 
 // Episodic Chain States
 const episodesList = ref<EpisodeItem[]>([])
@@ -1987,6 +2049,7 @@ const episodeSearchQuery = ref('')
 const episodeViewMode = ref<'visual' | 'raw'>('visual')
 const isEpisodesLoading = ref(false)
 const isCopied = ref(false)
+const isNodeCopied = ref(false)
 const newSkillForm = ref({
   name: '',
   description: '',
@@ -2186,7 +2249,8 @@ const getNodeLabel = (id: number): string => {
 
 const selectedNodeEdges = computed(() => {
   if (!selectedNode.value) return []
-  return graphData.value.edges.filter((e) => e.source_id === selectedNode.value!.id)
+  const id = selectedNode.value.id
+  return graphData.value.edges.filter((e) => e.source_id === id || e.target_id === id)
 })
 
 // Suggested real nodes from the current memory graph for 1-click spreading activation test
@@ -2270,6 +2334,15 @@ const copyEpisodeMarkdown = () => {
   }, 2000)
 }
 
+const copyNodeText = (text?: string) => {
+  if (!text) return
+  navigator.clipboard.writeText(text)
+  isNodeCopied.value = true
+  setTimeout(() => {
+    isNodeCopied.value = false
+  }, 2000)
+}
+
 const formatTimestamp = (ts?: number | null): string => {
   if (!ts) return t('memory.no_date')
   const d = new Date(ts * 1000)
@@ -2305,6 +2378,7 @@ const formatCleanText = (text?: string | null): string => {
 // =========================================================================
 
 const fetchSkills = async () => {
+  isSkillsLoading.value = true
   try {
     const res = await invoke<SkillItem[]>('skills_get_all')
     if (res) {
@@ -2312,6 +2386,8 @@ const fetchSkills = async () => {
     }
   } catch (err) {
     console.error('Failed to fetch skills:', err)
+  } finally {
+    isSkillsLoading.value = false
   }
 }
 
@@ -2562,6 +2638,23 @@ const fetchGraph = async () => {
   } finally {
     isLoading.value = false
     isRefreshing.value = false
+  }
+}
+
+const isCurrentTabLoading = computed(() => {
+  if (activeMemoryTab.value === 'graph') return isRefreshing.value
+  if (activeMemoryTab.value === 'skills') return isSkillsLoading.value
+  if (activeMemoryTab.value === 'episodes') return isEpisodesLoading.value
+  return false
+})
+
+const handleReloadActiveTab = async () => {
+  if (activeMemoryTab.value === 'graph') {
+    await fetchGraph()
+  } else if (activeMemoryTab.value === 'skills') {
+    await fetchSkills()
+  } else if (activeMemoryTab.value === 'episodes') {
+    await fetchEpisodes()
   }
 }
 
@@ -3093,7 +3186,8 @@ const drawCanvas = () => {
     // 8) Floating Label Capsule (Placed below the neuron soma)
     const labelY = node.y + node.radius + 15
     const rawLabel = node.session_id ? `🔒 ${node.label}` : node.label
-    const displayLabel = rawLabel.length > 28 ? `${rawLabel.slice(0, 26)}...` : rawLabel
+    const maxLen = isSelected ? 80 : (isHighlighted ? 64 : 34)
+    const displayLabel = rawLabel.length > maxLen ? `${rawLabel.slice(0, maxLen - 2)}...` : rawLabel
     ctx.font = isHighlighted ? 'bold 10.5px Inter, -apple-system, sans-serif' : '500 10px Inter, -apple-system, sans-serif'
     const textWidth = ctx.measureText(displayLabel).width
     const pillW = textWidth + 14

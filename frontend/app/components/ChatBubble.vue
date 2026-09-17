@@ -1199,6 +1199,9 @@ const getServerDisplayName = (tc: any) => {
   if (tc.server_id === 'skills' || tc.server_name === 'Procedural Skills' || isProceduralSkillCall(tc)) {
     return t('memory.skill_command_server_name')
   }
+  if (tc.server_id === 'atena_native' || tc.server_id === 'atena' || tc.server_name?.includes('Atena Core')) {
+    return t('memory.server_atena_native')
+  }
   return tc.server_name || ''
 }
 
@@ -1207,6 +1210,9 @@ const getToolDisplayName = (tc: any) => {
   if (isProceduralSkillCall(tc)) return t('memory.skill_create_title')
   if (tc.name === 'run_command' || tc.name === 'run_skill_command') return t('memory.skill_command_run')
   if (tc.name === 'run_skill_script') return t('memory.skill_script_run')
+  if (tc.name === 'atena_search_episodes') return t('memory.native_search_episodes_title')
+  if (tc.name === 'atena_read_episode') return t('memory.native_read_episode_title')
+  if (tc.name === 'atena_search_memory') return t('memory.native_search_memory_title')
   if (tc.name === 'loading_tool') return t('chat.generating_tool_call')
   if (tc.label) return tc.label
   if (props.mcpTools && props.mcpTools.length > 0) {
@@ -1263,16 +1269,19 @@ const heuristicFieldTranslation = (key: string) => {
 }
 
 const getFieldDisplayName = (tc: any, key: string) => {
+  if (key === 'timeout_ms' || key === 'timeoutMs') return t('memory.param_timeout_ms')
+  if (key === 'query') return t('memory.param_query')
+  if (key === 'limit') return t('memory.param_limit')
+  if (key === 'identifier') return t('memory.param_identifier')
   if (tc.server_id === 'skills' || tc.name === 'run_command' || tc.name === 'run_skill_command' || tc.name === 'run_skill_script' || isProceduralSkillCall(tc)) {
     if (key === 'command' || key === 'cmd') return t('memory.skill_param_command')
-    if (key === 'script_file' || key === 'script') return t('memory.skill_param_script_file')
-    if (key === 'slug') return t('memory.skill_param_slug')
+    if (key === 'script_file' || key === 'script' || key === 'script_name' || key === 'scriptName' || key === 'file_name' || key === 'fileName' || key === 'filename') return t('memory.skill_param_script_file')
+    if (key === 'slug' || key === 'skillId' || key === 'skill_id' || key === 'id') return t('memory.skill_param_slug')
     if (key === 'args') return t('memory.skill_param_args')
     if (key === 'triggers' || key === 'gatilhos') return t('memory.skill_param_triggers')
     if (key === 'steps' || key === 'passos') return t('memory.skill_param_steps')
     if (key === 'scripts') return t('memory.skill_param_scripts')
     if (key === 'refinement_note' || key === 'refinementNote') return t('memory.skill_param_refinement_note')
-    if (key === 'id') return t('memory.skill_param_slug')
     if (key === 'name') return t('memory.skill_param_name')
   }
   if (tc.field_labels && tc.field_labels[key]) {
@@ -1946,6 +1955,9 @@ const getToolDescription = (tc: any) => {
   if (isProceduralSkillCall(tc)) return t('memory.skill_create_desc')
   if (tc.name === 'run_command' || tc.name === 'run_skill_command') return t('memory.skill_command_desc')
   if (tc.name === 'run_skill_script') return t('memory.skill_script_desc')
+  if (tc.name === 'atena_search_episodes') return t('memory.native_search_episodes_desc')
+  if (tc.name === 'atena_read_episode') return t('memory.native_read_episode_desc')
+  if (tc.name === 'atena_search_memory') return t('memory.native_search_memory_desc')
   if (tc.description) return tc.description
   if (tc.status === 'pending_approval') return t('chat.awaiting_authorization')
   if (tc.status === 'executing') return t('chat.tool_call_executing_msg')

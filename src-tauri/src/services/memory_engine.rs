@@ -501,17 +501,17 @@ impl MemoryGraphEngine {
     // Spreading Activation — Associative Traversal
     // =========================================================================
 
-    /// Navega o grafo a partir de um nó âncora usando Spreading Activation.
+    /// Traverses the memory graph starting from an anchor node using Spreading Activation.
     ///
-    /// Usa uma priority queue (max-heap) para explorar primeiro os caminhos
-    /// com maior peso acumulado. Consulta o Hot Cache antes do grafo completo.
+    /// Uses a priority queue (max-heap) to explore paths with highest accumulated weight first.
+    /// Traverses both outgoing and incident incoming edges to explore the full associative context.
     ///
-    /// # Parâmetros
-    /// - `start_label`: Label do nó âncora (case-insensitive)
-    /// - `max_depth`: Profundidade máxima de busca
+    /// # Parameters
+    /// - `start_label`: Anchor node label or phrase (case-insensitive, diacritic-tolerant)
+    /// - `max_depth`: Maximum depth of associative traversal
     ///
-    /// # Retorna
-    /// Vec de caminhos associativos ordenados por peso total decrescente
+    /// # Returns
+    /// Vector of association paths sorted by descending total weight
     pub fn traverse_associations(
         &mut self,
         start_label: &str,
@@ -519,24 +519,28 @@ impl MemoryGraphEngine {
     ) -> Result<Vec<AssociationPath>, String> {
         let clean_start = start_label.trim();
         if clean_start.is_empty() {
-            return Err("Termo de busca vazio".into());
+            return Err("Empty search query".into());
         }
 
-        // 1. Tentar correspondência exata
+        // 1. Try exact match first
         let start_node = if let Some(node) = self.find_node_by_label(clean_start) {
             node.clone()
         } else {
-            // 2. If exact label not found, look for an anchor node contained inside the phrase
-            let lower_query = clean_start.to_lowercase();
+            // 2. If exact label not found, look for an anchor node using normalized matching & synonyms
+            let norm_query = Self::normalize_for_search(clean_start);
+            let query_synonyms = Self::get_search_synonyms(&norm_query);
             let mut best_match: Option<MemoryNode> = None;
             let mut longest_len = 0;
 
-            // Search for node whose label is contained in query or vice-versa
+            // Search for node whose label is contained in query, query contained in label, or synonym match
             for (label, id) in &self.label_index {
-                let lbl_lower = label.to_lowercase();
-                if lower_query.contains(&lbl_lower) || lbl_lower.contains(&lower_query) {
-                    if lbl_lower.len() > longest_len {
-                        longest_len = lbl_lower.len();
+                let lbl_norm = Self::normalize_for_search(label);
+                let matches_direct = norm_query.contains(&lbl_norm) || lbl_norm.contains(&norm_query);
+                let matches_synonym = query_synonyms.iter().any(|s| lbl_norm.contains(s) || s.contains(&lbl_norm));
+
+                if matches_direct || matches_synonym {
+                    if lbl_norm.len() > longest_len {
+                        longest_len = lbl_norm.len();
                         if let Some(node) = self.nodes.get(id) {
                             best_match = Some(node.clone());
                         }
@@ -544,18 +548,33 @@ impl MemoryGraphEngine {
                 }
             }
 
-            // If still not found, search by individual query words (ignoring stop-words)
+            // 3. If still not found, search by individual query words (ignoring stop-words)
             if best_match.is_none() {
-                let stopwords = ["quem", "qual", "onde", "como", "quando", "que", "esta", "está", "tem", "uma", "um", "filha", "filho", "esposa", "marido", "dela", "dele", "meu", "minha", "nosso", "nossa", "dos", "das", "para", "com", "por"];
-                let words: Vec<&str> = lower_query
+                let stopwords = [
+                    "quem", "qual", "onde", "como", "quando", "que", "esta", "está", "tem",
+                    "uma", "um", "filha", "filho", "esposa", "marido", "dela", "dele",
+                    "meu", "minha", "nosso", "nossa", "dos", "das", "para", "com", "por",
+                    "what", "who", "where", "how", "when", "which", "the", "and", "for", "with"
+                ];
+                let words: Vec<String> = norm_query
                     .split(|c: char| !c.is_alphanumeric())
                     .filter(|w| w.len() >= 3 && !stopwords.contains(w))
+                    .map(|s| s.to_string())
                     .collect();
 
-                for w in words {
+                let mut expanded_words: Vec<String> = words.clone();
+                for w in &words {
+                    for syn in Self::get_search_synonyms(w) {
+                        if !expanded_words.contains(&syn.to_string()) {
+                            expanded_words.push(syn.to_string());
+                        }
+                    }
+                }
+
+                for w in &expanded_words {
                     for (label, id) in &self.label_index {
-                        let lbl_lower = label.to_lowercase();
-                        if lbl_lower.contains(w) || w.contains(&lbl_lower) {
+                        let lbl_norm = Self::normalize_for_search(label);
+                        if lbl_norm.contains(w) || w.contains(&lbl_norm) {
                             if let Some(node) = self.nodes.get(id) {
                                 best_match = Some(node.clone());
                                 break;
@@ -575,7 +594,7 @@ impl MemoryGraphEngine {
         let mut visited: HashMap<u32, bool> = HashMap::new();
         visited.insert(start_node.id, true);
 
-        // Priority queue (max-heap por peso acumulado)
+        // Priority queue (max-heap by accumulated weight)
         let mut heap = BinaryHeap::new();
         let start_ts = if start_node.created_at > 0 { Some(start_node.created_at) } else { None };
         heap.push(ActivationNode {
@@ -598,7 +617,6 @@ impl MemoryGraphEngine {
                 break;
             }
             if current.depth >= max_depth {
-                // Caminho completo — adicionar aos resultados
                 if current.path.len() > 1 {
                     results.push(AssociationPath {
                         steps: current.path,
@@ -608,11 +626,10 @@ impl MemoryGraphEngine {
                 continue;
             }
 
-            // Fetch neighbors: Hot Cache first, then graph
-            let neighbors = self.get_neighbors_cached(current.node_id);
+            // Fetch all incident neighbors (both outgoing and incoming connections)
+            let neighbors = self.get_incident_neighbors(current.node_id);
 
             if neighbors.is_empty() && current.path.len() > 1 {
-                // Folha — adicionar caminho parcial aos resultados
                 results.push(AssociationPath {
                     steps: current.path,
                     total_weight: current.accumulated_weight,
@@ -621,13 +638,13 @@ impl MemoryGraphEngine {
             }
 
             let mut expanded = false;
-            for edge in &neighbors {
-                if visited.contains_key(&edge.target_id) {
+            for (neighbor_id, edge) in &neighbors {
+                if visited.contains_key(neighbor_id) {
                     continue;
                 }
-                visited.insert(edge.target_id, true);
+                visited.insert(*neighbor_id, true);
 
-                if let Some(target_node) = self.nodes.get(&edge.target_id) {
+                if let Some(target_node) = self.nodes.get(neighbor_id) {
                     let mut new_path = current.path.clone();
                     let edge_ts = if edge.created_at > 0 { edge.created_at } else { edge.last_accessed };
                     new_path.push(AssociationStep {
@@ -641,7 +658,7 @@ impl MemoryGraphEngine {
                     let new_weight = current.accumulated_weight * edge.weight;
 
                     heap.push(ActivationNode {
-                        node_id: edge.target_id,
+                        node_id: *neighbor_id,
                         accumulated_weight: new_weight,
                         depth: current.depth + 1,
                         path: new_path,
@@ -650,7 +667,6 @@ impl MemoryGraphEngine {
                 }
             }
 
-            // Se nenhum vizinho novo foi expandido, emitir caminho parcial
             if !expanded && current.path.len() > 1 {
                 results.push(AssociationPath {
                     steps: current.path,
@@ -659,7 +675,23 @@ impl MemoryGraphEngine {
             }
         }
 
-        // Ordenar por peso total decrescente e limitar aos melhores caminhos
+        // If no multi-step path was discovered but an anchor node was found,
+        // include the anchor node itself as a valid association path so terminal / leaf nodes are never discarded
+        if results.is_empty() {
+            let start_ts = if start_node.created_at > 0 { Some(start_node.created_at) } else { None };
+            results.push(AssociationPath {
+                steps: vec![AssociationStep {
+                    node_label: start_node.label.clone(),
+                    node_type: start_node.type_flag,
+                    relation: None,
+                    edge_weight: None,
+                    edge_timestamp: start_ts,
+                }],
+                total_weight: 1.0,
+            });
+        }
+
+        // Sort by descending total weight and keep top paths
         results.sort_by(|a, b| {
             b.total_weight
                 .partial_cmp(&a.total_weight)
@@ -672,7 +704,7 @@ impl MemoryGraphEngine {
 
     /// Fetches neighbors of a node: queries Hot Cache first, then graph.
     /// Edges found in graph are promoted to cache.
-    fn get_neighbors_cached(&mut self, node_id: u32) -> Vec<MemoryEdge> {
+    pub fn get_neighbors_cached(&mut self, node_id: u32) -> Vec<MemoryEdge> {
         // Tentar Hot Cache primeiro
         let cached = self.hot_cache.get_neighbors(node_id);
         if !cached.is_empty() {
@@ -693,6 +725,31 @@ impl MemoryGraphEngine {
         } else {
             Vec::new()
         }
+    }
+
+    /// Fetches all incident neighbors connected to a node (both outgoing and incoming connections).
+    /// Returns pairs of (neighbor_node_id, edge) sorted by edge weight.
+    pub fn get_incident_neighbors(&self, node_id: u32) -> Vec<(u32, MemoryEdge)> {
+        let mut neighbors: Vec<(u32, MemoryEdge)> = Vec::new();
+
+        // 1. Outgoing edges (node_id is source)
+        if let Some(edges) = self.adjacency.get(&node_id) {
+            for edge in edges {
+                neighbors.push((edge.target_id, edge.clone()));
+            }
+        }
+
+        // 2. Incoming edges (node_id is target)
+        for edges in self.adjacency.values() {
+            for edge in edges {
+                if edge.target_id == node_id && edge.source_id != node_id {
+                    neighbors.push((edge.source_id, edge.clone()));
+                }
+            }
+        }
+
+        neighbors.sort_by(|a, b| b.1.weight.partial_cmp(&a.1.weight).unwrap_or(Ordering::Equal));
+        neighbors
     }
 
     // =========================================================================
@@ -1986,27 +2043,94 @@ impl MemoryGraphEngine {
         )
     }
 
+    /// Normalizes text for search by stripping diacritics / accents and converting to lowercase
+    pub fn normalize_for_search(text: &str) -> String {
+        text.chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ã' | 'â' | 'ä' | 'Á' | 'À' | 'Ã' | 'Â' | 'Ä' => 'a',
+                'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+                'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+                'ó' | 'ò' | 'õ' | 'ô' | 'ö' | 'Ó' | 'Ò' | 'Õ' | 'Ô' | 'Ö' => 'o',
+                'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+                'ç' | 'Ç' => 'c',
+                'ñ' | 'Ñ' => 'n',
+                other => other.to_ascii_lowercase(),
+            })
+            .collect()
+    }
+
+    /// Returns cross-lingual and common associative synonyms for search expansion
+    pub fn get_search_synonyms(word: &str) -> Vec<&'static str> {
+        let clean = word.trim();
+        match clean {
+            "moedor" | "moer" | "moedora" | "grinder" => vec!["moedor", "grinder", "coffee"],
+            "cafe" | "coffee" => vec!["cafe", "coffee", "moedor", "grinder"],
+            "alergia" | "alergico" | "alergica" | "alergias" | "allergy" | "allergic" => {
+                vec!["alergia", "alergico", "allergy", "allergic", "seafood", "frutos do mar"]
+            }
+            "frutos do mar" | "seafood" | "marisco" | "camarao" | "peixe" => {
+                vec!["frutos do mar", "seafood", "allergy", "alergia"]
+            }
+            "pet" | "gato" | "cachorro" | "animal" | "cat" | "dog" => {
+                vec!["pet", "gato", "cat", "cachorro", "dog", "animal"]
+            }
+            "livro" | "livros" | "book" | "books" => vec!["livro", "book", "reading", "leitura"],
+            "profissao" | "trabalho" | "cargo" | "profession" | "role" | "job" => {
+                vec!["profissao", "profession", "role", "trabalho", "cargo"]
+            }
+            "teclado" | "teclados" | "keyboard" | "keyboards" => vec!["teclado", "keyboard"],
+            "regras" | "regra" | "restricao" | "restricoes" | "rule" | "constraint" => {
+                vec!["regra", "rule", "restricao", "constraint", "avoid"]
+            }
+            "comida" | "dieta" | "alimentacao" | "diet" | "food" => {
+                vec!["dieta", "diet", "food", "comida", "alimentacao"]
+            }
+            _ => vec![],
+        }
+    }
+
     /// Searches query keywords in graph and returns associative context
     pub fn search_active_context_for_query(&mut self, query: &str) -> Option<String> {
         if self.nodes.is_empty() {
             return None;
         }
 
-        let query_lower = query.to_lowercase();
+        let query_norm = Self::normalize_for_search(query);
         let mut matched_labels: Vec<String> = Vec::new();
 
-        // 1. Procurar correspondência exata ou por palavra filtrada de stop words
-        let words: Vec<&str> = query_lower
+        // 1. Search with normalized query and expanded search tokens
+        let words: Vec<String> = query_norm
             .split(|c: char| !c.is_alphanumeric())
             .filter(|w| w.len() >= 3 && !Self::is_stop_word(w))
+            .map(|s| s.to_string())
             .collect();
 
+        let mut search_tokens: Vec<String> = words.clone();
+        for w in &words {
+            for syn in Self::get_search_synonyms(w) {
+                let syn_str = syn.to_string();
+                if !search_tokens.contains(&syn_str) {
+                    search_tokens.push(syn_str);
+                }
+            }
+        }
+        for syn in Self::get_search_synonyms(&query_norm) {
+            let syn_str = syn.to_string();
+            if !search_tokens.contains(&syn_str) {
+                search_tokens.push(syn_str);
+            }
+        }
+
         for (label, _) in &self.label_index {
-            let lbl_lower = label.to_lowercase();
-            // Verifica se a query contém o label ou se alguma palavra significativa bate
-            if query_lower.contains(&lbl_lower)
-                || words.iter().any(|w| *w == lbl_lower || (lbl_lower.len() >= 4 && lbl_lower.contains(*w)))
-            {
+            let lbl_norm = Self::normalize_for_search(label);
+            let matches_query = query_norm.contains(&lbl_norm) || lbl_norm.contains(&query_norm);
+            let matches_token = search_tokens.iter().any(|token| {
+                *token == lbl_norm
+                    || (lbl_norm.len() >= 3 && lbl_norm.contains(token))
+                    || (token.len() >= 4 && token.contains(&lbl_norm))
+            });
+
+            if matches_query || matches_token {
                 if !matched_labels.contains(label) {
                     matched_labels.push(label.clone());
                 }
@@ -2032,10 +2156,10 @@ impl MemoryGraphEngine {
             "about me",
             "know who i am",
         ];
-        if self_referential.iter().any(|p| query_lower.contains(p)) {
+        if self_referential.iter().any(|p| query_norm.contains(p)) {
             for (label, _) in &self.label_index {
-                let lbl_lower = label.to_lowercase();
-                if lbl_lower == "user" || lbl_lower == "usuário" || lbl_lower == "usuario" {
+                let lbl_norm = Self::normalize_for_search(label);
+                if lbl_norm == "user" || lbl_norm == "usuario" {
                     if !matched_labels.contains(label) {
                         matched_labels.push(label.clone());
                     }
