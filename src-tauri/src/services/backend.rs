@@ -1686,22 +1686,51 @@ impl BackendManager {
         }
 
         // Check if matching procedural skill defines auto permission
-        if tc.server_id.as_deref() == Some("skills") {
+        if tc.server_id.as_deref() == Some("skills")
+            || tc.name == "run_command"
+            || tc.name == "run_skill_command"
+            || tc.name == "run_skill_script"
+        {
             let skills = crate::services::memory_engine::MemoryGraphEngine::load_skills();
-            let cmd_opt = tc.arguments.get("command").and_then(|v| v.as_str());
-            let slug_opt = tc.arguments.get("slug").and_then(|v| v.as_str());
-            let script_opt = tc.arguments.get("script_file").and_then(|v| v.as_str());
+            let cmd_opt = tc.arguments.get("command").or_else(|| tc.arguments.get("cmd")).and_then(|v| v.as_str());
+            let slug_opt = tc.arguments.get("slug")
+                .or_else(|| tc.arguments.get("skillId"))
+                .or_else(|| tc.arguments.get("skill_id"))
+                .or_else(|| tc.arguments.get("id"))
+                .and_then(|v| v.as_str());
+            let script_opt = tc.arguments.get("script_file")
+                .or_else(|| tc.arguments.get("script"))
+                .or_else(|| tc.arguments.get("script_name"))
+                .or_else(|| tc.arguments.get("file_name"))
+                .and_then(|v| v.as_str());
 
             if let Some(matched) = skills.iter().find(|s| {
-                if let Some(cmd) = cmd_opt {
-                    s.steps.iter().any(|st| st.effective_command().as_deref() == Some(cmd))
-                } else if let Some(slug) = slug_opt {
-                    s.id.eq_ignore_ascii_case(slug)
-                } else if let Some(script) = script_opt {
-                    s.scripts.iter().any(|sc| sc.eq_ignore_ascii_case(script))
-                } else {
-                    false
+                if let Some(slug) = slug_opt {
+                    let clean_s_id = s.id.trim_start_matches("skill-");
+                    let clean_slug = slug.trim_start_matches("skill-");
+                    if s.id.eq_ignore_ascii_case(slug)
+                        || s.name.eq_ignore_ascii_case(slug)
+                        || clean_s_id.eq_ignore_ascii_case(clean_slug)
+                        || s.id == format!("skill-{}", slug)
+                        || slug == format!("skill-{}", s.id)
+                    {
+                        return true;
+                    }
                 }
+                if let Some(cmd) = cmd_opt {
+                    if s.steps.iter().any(|st| st.effective_command().as_deref() == Some(cmd)) {
+                        return true;
+                    }
+                }
+                if let Some(script) = script_opt {
+                    let clean = script.trim_start_matches('/').trim_start_matches("scripts/");
+                    if s.scripts.iter().any(|sc| sc.eq_ignore_ascii_case(clean) || sc.eq_ignore_ascii_case(script))
+                        || s.steps.iter().any(|st| st.script_file.as_deref().map(|sf| sf.trim_start_matches('/').trim_start_matches("scripts/")).eq(&Some(clean)))
+                    {
+                        return true;
+                    }
+                }
+                false
             }) {
                 tc.permission_mode = Some(matched.permission_mode.clone());
             }

@@ -710,19 +710,27 @@
           >
             <div class="space-y-3">
               <!-- Card Header -->
-              <div class="flex items-start justify-between gap-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
-                    <Wrench class="w-4 h-4" />
+              <div class="space-y-2.5">
+                <div class="flex items-start justify-between gap-2.5">
+                  <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
+                      <Wrench class="w-4 h-4" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <h4 class="text-sm font-bold text-slate-100 group-hover:text-indigo-300 transition-colors truncate" :title="skill.name">
+                        {{ skill.name }}
+                      </h4>
+                      <span class="text-[10px] text-slate-500 font-mono block">{{ formatTimestamp(skill.last_refined_at) }}</span>
+                    </div>
                   </div>
-                  <div>
-                    <h4 class="text-sm font-bold text-slate-100 group-hover:text-indigo-300 transition-colors">{{ skill.name }}</h4>
-                    <span class="text-[10px] text-slate-500 font-mono">{{ formatTimestamp(skill.last_refined_at) }}</span>
-                  </div>
+
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0 self-start">
+                    v{{ skill.version }}.0 {{ skill.version > 1 ? $t('memory.skill_refined') : $t('memory.skill_initial') }}
+                  </span>
                 </div>
 
-                <!-- Badges -->
-                <div class="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                <!-- Status & Permission Badges Bar -->
+                <div class="flex items-center gap-1.5 flex-wrap">
                   <!-- Permission Mode Toggle Badge (Ask vs Auto) -->
                   <button
                     @click.stop="toggleSkillPermission(skill)"
@@ -742,9 +750,6 @@
                     class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30"
                   >
                     📁 {{ $t('memory.skill_has_scripts', { count: skill.scripts.length }) }}
-                  </span>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    v{{ skill.version }}.0 {{ skill.version > 1 ? $t('memory.skill_refined') : $t('memory.skill_initial') }}
                   </span>
                 </div>
               </div>
@@ -1416,7 +1421,7 @@
       v-if="isNewSkillModalOpen"
       class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
     >
-      <div class="bg-[#0f1220] border border-[#242c48] rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="bg-[#0f1220] border border-[#242c48] rounded-2xl max-w-3xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
         <div class="flex items-center justify-between shrink-0">
           <div class="flex items-center gap-2">
             <Wrench class="w-5 h-5 text-indigo-400" />
@@ -1444,7 +1449,7 @@
           {{ $t('memory.skill_modal_desc') }}
         </p>
 
-        <div class="space-y-3 overflow-y-auto pr-1 flex-1">
+        <div class="space-y-4 overflow-y-auto pr-2 flex-1 min-h-0 custom-scrollbar">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">{{ $t('memory.skill_name_label') }}</label>
@@ -1478,40 +1483,38 @@
           </div>
 
           <!-- Permission Mode Selector (Ask vs Auto) -->
-          <div class="p-3 rounded-xl bg-[#14192b] border border-[#242e4d] space-y-2">
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">{{ $t('memory.skill_perm_title') }}</label>
-                <p class="text-[10.5px] text-slate-400 mt-0.5">{{ $t('memory.skill_perm_desc') }}</p>
-              </div>
-              <div class="flex items-center gap-1.5 p-1 bg-[#0e1220] rounded-lg border border-[#202740]">
-                <button
-                  type="button"
-                  @click="newSkillForm.permission_mode = 'ask'"
-                  :class="[
-                    'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
-                    newSkillForm.permission_mode !== 'auto'
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  ]"
-                >
-                  <ShieldCheck class="w-3 h-3" />
-                  <span>{{ $t('memory.skill_perm_ask') }}</span>
-                </button>
-                <button
-                  type="button"
-                  @click="newSkillForm.permission_mode = 'auto'"
-                  :class="[
-                    'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
-                    newSkillForm.permission_mode === 'auto'
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  ]"
-                >
-                  <Zap class="w-3 h-3" />
-                  <span>{{ $t('memory.skill_perm_auto') }}</span>
-                </button>
-              </div>
+          <div class="p-3.5 rounded-xl bg-[#14192b] border border-[#242e4d] flex items-center justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">{{ $t('memory.skill_perm_title') }}</label>
+              <p class="text-[10.5px] text-slate-400 mt-0.5">{{ $t('memory.skill_perm_desc') }}</p>
+            </div>
+            <div class="flex items-center gap-1.5 p-1 bg-[#0e1220] rounded-lg border border-[#202740] shrink-0">
+              <button
+                type="button"
+                @click="newSkillForm.permission_mode = 'ask'"
+                :class="[
+                  'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
+                  newSkillForm.permission_mode !== 'auto'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                ]"
+              >
+                <ShieldCheck class="w-3 h-3" />
+                <span>{{ $t('memory.skill_perm_ask') }}</span>
+              </button>
+              <button
+                type="button"
+                @click="newSkillForm.permission_mode = 'auto'"
+                :class="[
+                  'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
+                  newSkillForm.permission_mode === 'auto'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                ]"
+              >
+                <Zap class="w-3 h-3" />
+                <span>{{ $t('memory.skill_perm_auto') }}</span>
+              </button>
             </div>
           </div>
 

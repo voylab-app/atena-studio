@@ -2127,6 +2127,9 @@ async fn call_mcp_tool(
                     .or_else(|| arguments.get("script"))
                     .or_else(|| arguments.get("script_name"))
                     .or_else(|| arguments.get("scriptName"))
+                    .or_else(|| arguments.get("file_name"))
+                    .or_else(|| arguments.get("fileName"))
+                    .or_else(|| arguments.get("filename"))
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
                 let args: Vec<String> = serde_json::from_value(arguments.get("args").cloned().unwrap_or(serde_json::json!([]))).unwrap_or_default();
