@@ -1758,68 +1758,16 @@
             </div>
           </div>
 
-          <!-- Logs Console -->
-          <div class="rounded-2xl bg-[#111420] border border-[#1e2336] overflow-hidden shadow-sm flex flex-col h-64">
-            <div class="px-4 py-2.5 border-b border-[#1e2336] flex items-center justify-between bg-[#141826]">
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <Terminal class="w-3.5 h-3.5 text-indigo-400" />
-                  <span>{{ $t('settings.http_logs_title') }}</span>
-                </span>
-                <span v-if="logs.length > 0" class="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/50">
-                  {{ $t('settings.http_logs_count', { count: logs.length }) }}
-                </span>
-              </div>
-              <div class="flex items-center gap-2">
-                <button @click="$emit('refreshLogs')"
-                  :title="$t('settings.http_logs_refresh')"
-                  class="text-[11px] text-slate-400 hover:text-indigo-300 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[#1c2236] transition-colors cursor-pointer">
-                  <RefreshCw class="w-3 h-3" />
-                  <span>{{ $t('settings.http_logs_refresh') }}</span>
-                </button>
-                <button @click="$emit('clearLogs')"
-                  :disabled="logs.length === 0"
-                  :title="$t('settings.http_logs_clear')"
-                  :class="[
-                    'text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors cursor-pointer',
-                    logs.length === 0 ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:text-rose-300 hover:bg-rose-500/10'
-                  ]">
-                  <Trash2 class="w-3 h-3" />
-                  <span>{{ $t('settings.http_logs_clear') }}</span>
-                </button>
-              </div>
-            </div>
-            <div class="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-1.5 select-text">
-              <div v-if="logs.length === 0" class="flex flex-col items-center justify-center py-12 text-center text-slate-500 space-y-1.5">
-                <Terminal class="w-7 h-7 text-slate-600 opacity-60 mb-1" />
-                <p class="text-xs font-medium text-slate-400">{{ $t('settings.http_logs_empty') }}</p>
-                <p class="text-[11px] text-slate-500 max-w-sm">{{ $t('settings.http_logs_empty_desc') }}</p>
-              </div>
-              <div v-for="log in logs" :key="log.id"
-                class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#0d0f17] border border-[#1c2030] text-[11px] hover:border-[#282f45] transition-colors">
-                <div class="flex items-center gap-2 min-w-0 pr-2">
-                  <span :class="['px-1.5 py-0.5 rounded text-[9.5px] font-bold border uppercase tracking-wider flex-shrink-0', getMethodClass(log.method)]">
-                    {{ log.method }}
-                  </span>
-                  <span class="text-slate-300 truncate" :title="log.path">{{ log.path }}</span>
-                  <span v-if="log.timestamp" class="text-[10px] text-slate-500 hidden sm:inline flex-shrink-0">
-                    {{ formatLogTime(log.timestamp) }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-2.5 flex-shrink-0">
-                  <span v-if="log.tokens_prompt || log.tokens_completion" class="text-[10px] text-slate-500 hidden md:inline">
-                    {{ log.tokens_prompt }}/{{ log.tokens_completion }} tok
-                  </span>
-                  <span :class="['font-semibold font-mono', getStatusClass(log.status_code)]">
-                    {{ log.status_code }}
-                  </span>
-                  <span class="text-slate-400 font-mono text-[10.5px] min-w-[45px] text-right">
-                    {{ log.latency_ms }}ms
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Developer Logs Console (LM Studio Style) -->
+          <DeveloperLogsConsole
+            :logs="logs"
+            :developerLogs="developerLogs"
+            :isGenerating="isGenerating"
+            @refreshLogs="$emit('refreshLogs')"
+            @refreshDeveloperLogs="$emit('refreshDeveloperLogs')"
+            @clearLogs="$emit('clearLogs')"
+            @clearDeveloperLogs="$emit('clearDeveloperLogs')"
+          />
         </div>
 
 
@@ -2664,7 +2612,8 @@ import { ref, computed, watch, onMounted, onUnmounted, inject, type Ref, type Co
 import { invoke } from '@tauri-apps/api/core'
 import { saveTextFile } from '~/utils/exportMarkdown'
 import { addNotification } from '~/utils/notifications'
-import type { AppConfig, GenerationParams, HardwareInfo, McpServerConfig, McpToolDefinition, DetectedModelDirectory } from '~/types'
+import type { AppConfig, GenerationParams, HardwareInfo, McpServerConfig, McpToolDefinition, DetectedModelDirectory, ServerRequestLog, DeveloperLogEntry } from '~/types'
+import DeveloperLogsConsole from '../settings/DeveloperLogsConsole.vue'
 
 const platformInfo = inject<Ref<{ os: string; supports_mlx: boolean }>>('platformInfo', ref({ os: 'macos', supports_mlx: true }))
 const supportsMlx = inject<Ref<boolean> | ComputedRef<boolean>>('supportsMlx', computed(() => true))
@@ -2761,7 +2710,9 @@ interface Props {
   config?: AppConfig
   params?: GenerationParams
   serviceHealth?: any
-  logs?: any[]
+  logs?: ServerRequestLog[]
+  developerLogs?: DeveloperLogEntry[]
+  isGenerating?: boolean
   hardware?: HardwareInfo
   currentTheme?: string
   initialSection?: string | null
@@ -2797,6 +2748,8 @@ const props = withDefaults(defineProps<Props>(), {
   }),
   serviceHealth: () => ({ mlx_online: false, ollama_online: false }),
   logs: () => [],
+  developerLogs: () => [],
+  isGenerating: false,
   hardware: () => ({
     chip_name: 'Apple Silicon',
     gpu_cores: 8,
@@ -2818,6 +2771,8 @@ const emit = defineEmits<{
   stopAllServers: []
   clearLogs: []
   refreshLogs: []
+  clearDeveloperLogs: []
+  refreshDeveloperLogs: []
   refreshMcp: []
   openAgyLogin: []
   openSetup: []

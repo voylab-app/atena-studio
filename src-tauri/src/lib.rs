@@ -15,7 +15,7 @@ use crate::core::hardware::SystemHardwareInfo;
 use crate::core::mcp::{McpServerConfig, McpToolDefinition, McpToolWithServer};
 use crate::core::memory::{CompressionType, GraphOptimizationReport, NodeType, ProceduralSkill, RelationType, SkillCommandResult, SkillScriptFilePayload, SkillStep, SleepConsolidationReport, VigiliaEvent};
 use crate::core::model::{BackendType, ChatMessage, InferenceParams, ModelInfo};
-use crate::core::server::ServerRequestLog;
+use crate::core::server::{DeveloperLogEntry, ServerRequestLog};
 use crate::services::backend::{BackendManager, ModelLoadProgress};
 use crate::services::downloader::{
     DownloadTaskProgress, HfModelDetail, HfModelSummary, ModelDownloader,
@@ -1227,6 +1227,17 @@ async fn get_server_logs(state: State<'_, AppState>) -> Result<Vec<ServerRequest
 }
 
 #[command]
+async fn get_developer_logs() -> Result<Vec<DeveloperLogEntry>, String> {
+    Ok(LocalServerController::get_developer_logs())
+}
+
+#[command]
+async fn clear_developer_logs() -> Result<(), String> {
+    LocalServerController::clear_developer_logs();
+    Ok(())
+}
+
+#[command]
 async fn clear_server_logs(state: State<'_, AppState>) -> Result<(), String> {
     LocalServerController::clear_logs();
     if let Ok(mut logs) = state.server_logs.try_lock() {
@@ -2184,7 +2195,8 @@ pub async fn execute_tool_call_internal(
                 let refinement_note = arguments.get("refinement_note").or_else(|| arguments.get("refinementNote")).and_then(|v| v.as_str()).map(|s| s.to_string());
                 let env_vars = serde_json::from_value(arguments.get("env_vars").or_else(|| arguments.get("envVars")).cloned().unwrap_or(serde_json::json!(null))).ok();
                 let permission_mode = arguments.get("permission_mode").or_else(|| arguments.get("permissionMode")).and_then(|v| v.as_str()).map(|s| s.to_string());
-                let skill = MemoryGraphEngine::update_skill_with_scripts(id, name, description, triggers, steps, scripts, refinement_note, env_vars, permission_mode)?;
+                let enabled = arguments.get("enabled").and_then(|v| v.as_bool());
+                let skill = MemoryGraphEngine::update_skill_with_scripts(id, name, description, triggers, steps, scripts, refinement_note, env_vars, permission_mode, enabled)?;
                 return Ok(serde_json::to_value(&skill).unwrap_or(serde_json::json!({})));
             }
             "run_command" | "run_skill_command" => {
@@ -3148,6 +3160,7 @@ async fn skills_update_with_scripts(
     refinement_note: Option<String>,
     env_vars: Option<HashMap<String, String>>,
     permission_mode: Option<String>,
+    enabled: Option<bool>,
 ) -> Result<ProceduralSkill, String> {
     MemoryGraphEngine::update_skill_with_scripts(
         id,
@@ -3159,6 +3172,7 @@ async fn skills_update_with_scripts(
         refinement_note,
         env_vars,
         permission_mode,
+        enabled,
     )
 }
 
@@ -3173,6 +3187,7 @@ async fn skills_save_manual(
     refinement_note: Option<String>,
     env_vars: Option<HashMap<String, String>>,
     permission_mode: Option<String>,
+    enabled: Option<bool>,
 ) -> Result<ProceduralSkill, String> {
     if let Some(detailed) = steps_detailed {
         if !detailed.is_empty() {
@@ -3185,6 +3200,7 @@ async fn skills_save_manual(
                 refinement_note,
                 env_vars,
                 permission_mode,
+                enabled,
             ));
         }
     }
@@ -3214,6 +3230,7 @@ async fn skills_save_manual(
         refinement_note,
         env_vars,
         permission_mode,
+        enabled,
     ))
 }
 
@@ -3223,13 +3240,21 @@ async fn skills_set_permission_mode(
     permission_mode: String,
 ) -> Result<(), String> {
     let mut skills = MemoryGraphEngine::load_skills();
-    if let Some(skill) = skills.iter_mut().find(|s| s.id == skill_id) {
+    if let Some(skill) = skills.iter_mut().find(|s| s.id == skill_id || s.id == format!("skill-{}", skill_id)) {
         skill.permission_mode = permission_mode;
-        MemoryGraphEngine::save_skills(&skills)?;
+        MemoryGraphEngine::save_single_skill(skill)?;
         Ok(())
     } else {
         Err(format!("Skill '{}' not found", skill_id))
     }
+}
+
+#[command]
+async fn skills_set_enabled(
+    skill_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    MemoryGraphEngine::set_skill_enabled(&skill_id, enabled).map(|_| ())
 }
 
 #[command]
@@ -3535,6 +3560,8 @@ pub fn run() {
             start_ollama_server,
             stop_all_servers,
             get_server_logs,
+            get_developer_logs,
+            clear_developer_logs,
             clear_server_logs,
             get_mcp_servers,
             save_mcp_servers,
@@ -3602,6 +3629,7 @@ pub fn run() {
             skills_update_with_scripts,
             skills_delete,
             skills_set_permission_mode,
+            skills_set_enabled,
             episodes_get_all,
             episodes_search,
             episodes_get_detail,
@@ -3635,6 +3663,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            LocalServerController::init_handle(handle.clone());
             if let Err(e) = tray::setup_tray(&handle) {
                 log::warn!("Failed to initialize system tray: {}", e);
             }

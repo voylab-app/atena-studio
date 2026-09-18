@@ -658,10 +658,16 @@ pub struct ProceduralSkill {
     pub env_vars: Option<std::collections::HashMap<String, String>>,
     #[serde(default = "default_skill_permission_mode")]
     pub permission_mode: String,
+    #[serde(default = "default_skill_enabled")]
+    pub enabled: bool,
 }
 
 fn default_skill_permission_mode() -> String {
     "ask".to_string()
+}
+
+fn default_skill_enabled() -> bool {
+    true
 }
 
 /// Execution result for a skill command or script

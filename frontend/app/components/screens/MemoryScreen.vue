@@ -764,7 +764,12 @@
           <div
             v-for="skill in filteredSkills"
             :key="skill.id"
-            class="p-5 rounded-2xl bg-[#0e1222] border border-[#1e2744] hover:border-indigo-500/40 transition-all shadow-lg flex flex-col justify-between space-y-4 group"
+            :class="[
+              'p-5 rounded-2xl bg-[#0e1222] border transition-all shadow-lg flex flex-col justify-between space-y-4 group',
+              skill.enabled === false
+                ? 'border-slate-800/80 opacity-70 bg-[#090b14]'
+                : 'border-[#1e2744] hover:border-indigo-500/40'
+            ]"
           >
             <div class="space-y-3">
               <!-- Card Header -->
@@ -789,6 +794,21 @@
 
                 <!-- Status & Permission Badges Bar -->
                 <div class="flex items-center gap-1.5 flex-wrap">
+                  <!-- Skill Active / Disabled Toggle Badge -->
+                  <button
+                    @click.stop="toggleSkillEnabled(skill)"
+                    :class="[
+                      'px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border transition-all cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs',
+                      skill.enabled !== false
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                        : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-800 hover:text-slate-300'
+                    ]"
+                    :title="skill.enabled !== false ? $t('memory.skill_active_tooltip') : $t('memory.skill_inactive_tooltip')"
+                  >
+                    <Power class="w-3 h-3" :class="skill.enabled !== false ? 'text-emerald-400' : 'text-slate-500'" />
+                    <span>{{ skill.enabled !== false ? $t('memory.skill_active') : $t('memory.skill_inactive') }}</span>
+                  </button>
+
                   <!-- Permission Mode Toggle Badge (Ask vs Auto) -->
                   <button
                     @click.stop="toggleSkillPermission(skill)"
@@ -942,7 +962,7 @@
                   <span>{{ $t('memory.refine_btn') }}</span>
                 </button>
                 <button
-                  @click="handleDeleteSkill(skill.id)"
+                  @click="openDeleteSkillConfirm(skill)"
                   class="p-1.5 rounded-lg bg-[#151b2e] hover:bg-rose-950/50 border border-[#242e4d] hover:border-rose-500/40 text-slate-400 hover:text-rose-300 transition-all cursor-pointer active:scale-95"
                   :title="$t('memory.delete_skill_tooltip')"
                 >
@@ -1307,6 +1327,53 @@
       </div>
     </div>
 
+    <!-- Modal: Delete Skill Confirmation -->
+    <div
+      v-if="skillToDelete"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+      @click.self="!isDeletingSkill && (skillToDelete = null)"
+    >
+      <div class="bg-[#0f1220] border border-rose-500/30 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+            <Trash2 class="w-5 h-5" />
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-100">{{ $t('memory.delete_skill_confirm_title') }}</h3>
+            <p class="text-xs text-slate-400">{{ $t('memory.delete_skill_confirm_desc', { name: skillToDelete.name }) }}</p>
+          </div>
+        </div>
+
+        <div v-if="skillToDelete.folder_path || (skillToDelete.steps && skillToDelete.steps.length > 0)" class="p-3.5 rounded-xl bg-[#14192b] border border-[#212942] text-xs text-slate-300 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-slate-200 truncate">{{ skillToDelete.name }}</span>
+            <span class="font-mono text-purple-300 text-[10px] bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-500/30">v{{ skillToDelete.version }}.0</span>
+          </div>
+          <p v-if="skillToDelete.description" class="text-slate-400 text-[11px] line-clamp-2">{{ skillToDelete.description }}</p>
+          <p v-if="skillToDelete.folder_path" class="text-slate-500 truncate text-[10.5px] font-mono pt-1 border-t border-[#1e253c]">{{ skillToDelete.folder_path }}</p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            @click="skillToDelete = null"
+            :disabled="isDeletingSkill"
+            class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+          >
+            {{ $t('common.cancel') }}
+          </button>
+          <button
+            @click="handleConfirmDeleteSkill"
+            :disabled="isDeletingSkill"
+            class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-lg shadow-rose-600/25 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <Loader2 v-if="isDeletingSkill" class="w-3.5 h-3.5 animate-spin" />
+            <Trash2 v-else class="w-3.5 h-3.5" />
+            <span>{{ isDeletingSkill ? $t('memory.deleting_skill') : $t('memory.btn_delete_skill') }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal: Optimization & Pruning Report -->
     <div
       v-if="sleepReport"
@@ -1572,6 +1639,42 @@
               >
                 <Zap class="w-3 h-3" />
                 <span>{{ $t('memory.skill_perm_auto') }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Skill Status Selector (Active vs Disabled) -->
+          <div class="p-3.5 rounded-xl bg-[#14192b] border border-[#242e4d] flex items-center justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">{{ $t('memory.skill_status_title') }}</label>
+              <p class="text-[10.5px] text-slate-400 mt-0.5">{{ $t('memory.skill_status_desc') }}</p>
+            </div>
+            <div class="flex items-center gap-1.5 p-1 bg-[#0e1220] rounded-lg border border-[#202740] shrink-0">
+              <button
+                type="button"
+                @click="newSkillForm.enabled = true"
+                :class="[
+                  'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
+                  newSkillForm.enabled !== false
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                ]"
+              >
+                <Power class="w-3 h-3" />
+                <span>{{ $t('memory.skill_active') }}</span>
+              </button>
+              <button
+                type="button"
+                @click="newSkillForm.enabled = false"
+                :class="[
+                  'px-2.5 py-1 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1',
+                  newSkillForm.enabled === false
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                ]"
+              >
+                <Power class="w-3 h-3" />
+                <span>{{ $t('memory.skill_inactive') }}</span>
               </button>
             </div>
           </div>
@@ -1857,7 +1960,8 @@ import {
   Filter,
   Network,
   Folder,
-  Terminal
+  Terminal,
+  Power
 } from 'lucide-vue-next'
 import MarkdownIt from 'markdown-it'
 import { useAppLocale } from '../../composables/useLocale'
@@ -1931,6 +2035,8 @@ export interface SkillItem {
   folder_path?: string | null
   scripts?: string[]
   env_vars?: Record<string, string> | null
+  permission_mode?: string
+  enabled?: boolean
   [key: string]: any
 }
 
@@ -2056,7 +2162,8 @@ const newSkillForm = ref({
   triggers: '',
   steps: '',
   refinement_note: '',
-  permission_mode: 'ask'
+  permission_mode: 'ask',
+  enabled: true
 })
 
 interface FormStepItem {
@@ -2400,7 +2507,8 @@ const openNewSkillModal = (skill: SkillItem | null = null) => {
       triggers: skill.triggers.join(', '),
       steps: '',
       refinement_note: '',
-      permission_mode: skill.permission_mode || 'ask'
+      permission_mode: skill.permission_mode || 'ask',
+      enabled: skill.enabled !== false
     }
     formSteps.value = (skill.steps || []).map(s => ({
       instruction: s.instruction,
@@ -2418,7 +2526,8 @@ const openNewSkillModal = (skill: SkillItem | null = null) => {
       triggers: '',
       steps: '',
       refinement_note: '',
-      permission_mode: 'ask'
+      permission_mode: 'ask',
+      enabled: true
     }
     formSteps.value = [{ instruction: '', command: '', script_file: '' }]
   }
@@ -2435,6 +2544,19 @@ const toggleSkillPermission = async (skill: SkillItem) => {
     skill.permission_mode = newMode
   } catch (err) {
     console.error('Failed to toggle skill permission:', err)
+  }
+}
+
+const toggleSkillEnabled = async (skill: SkillItem) => {
+  const newEnabled = skill.enabled === false ? true : false
+  try {
+    await invoke('skills_set_enabled', {
+      skillId: skill.id,
+      enabled: newEnabled
+    })
+    skill.enabled = newEnabled
+  } catch (err) {
+    console.error('Failed to toggle skill enabled:', err)
   }
 }
 
@@ -2475,7 +2597,8 @@ const handleSaveSkill = async () => {
       stepsDetailed: detailedSteps,
       refinementNote: newSkillForm.value.refinement_note || null,
       envVars: null,
-      permissionMode: newSkillForm.value.permission_mode || 'ask'
+      permissionMode: newSkillForm.value.permission_mode || 'ask',
+      enabled: newSkillForm.value.enabled !== false
     })
     isNewSkillModalOpen.value = false
     await fetchSkills()
@@ -2597,12 +2720,24 @@ const copyTerminalOutput = () => {
   }, 2000)
 }
 
-const handleDeleteSkill = async (id: string) => {
+const skillToDelete = ref<SkillItem | null>(null)
+const isDeletingSkill = ref(false)
+
+const openDeleteSkillConfirm = (skill: SkillItem) => {
+  skillToDelete.value = skill
+}
+
+const handleConfirmDeleteSkill = async () => {
+  if (!skillToDelete.value) return
+  isDeletingSkill.value = true
   try {
-    await invoke('skills_delete', { id })
+    await invoke('skills_delete', { id: skillToDelete.value.id })
+    skillToDelete.value = null
     await fetchSkills()
   } catch (err) {
     console.error('Failed to delete skill:', err)
+  } finally {
+    isDeletingSkill.value = false
   }
 }
 

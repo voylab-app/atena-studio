@@ -3580,6 +3580,7 @@ r#"# Cognitive Episode #{new_index}
             md.push_str(&format!("> {}\n\n", skill.description));
         }
         md.push_str(&format!("- **Version**: v{}\n", skill.version));
+        md.push_str(&format!("- **Status**: {}\n", if skill.enabled { "Active" } else { "Disabled" }));
         if !skill.triggers.is_empty() {
             md.push_str(&format!("- **Triggers**: {}\n", skill.triggers.join(", ")));
         }
@@ -3732,6 +3733,7 @@ r#"# Cognitive Episode #{new_index}
         refinement_note: Option<String>,
         env_vars: Option<std::collections::HashMap<String, String>>,
         permission_mode: Option<String>,
+        enabled: Option<bool>,
     ) -> ProceduralSkill {
         let mut skills = Self::load_skills();
         let now = Self::current_timestamp();
@@ -3765,6 +3767,9 @@ r#"# Cognitive Episode #{new_index}
             }
             if let Some(pm) = permission_mode {
                 existing.permission_mode = pm;
+            }
+            if let Some(en) = enabled {
+                existing.enabled = en;
             }
             existing.last_refined_at = now;
             if let Some(note) = refinement_note {
@@ -3802,6 +3807,7 @@ r#"# Cognitive Episode #{new_index}
             scripts: Vec::new(),
             env_vars,
             permission_mode: permission_mode.unwrap_or_else(|| "ask".to_string()),
+            enabled: enabled.unwrap_or(true),
         };
 
         let _ = Self::save_single_skill(&mut new_skill);
@@ -3873,6 +3879,7 @@ r#"# Cognitive Episode #{new_index}
             triggers,
             steps,
             refinement_note,
+            None,
             None,
             None,
         )
@@ -3970,6 +3977,7 @@ r#"# Cognitive Episode #{new_index}
             scripts: script_filenames,
             env_vars,
             permission_mode: existing.map(|e| e.permission_mode.clone()).unwrap_or_else(|| "ask".to_string()),
+            enabled: existing.map(|e| e.enabled).unwrap_or(true),
         };
 
         Self::save_single_skill(&mut skill)?;
@@ -3987,6 +3995,7 @@ r#"# Cognitive Episode #{new_index}
         refinement_note: Option<String>,
         env_vars: Option<HashMap<String, String>>,
         permission_mode: Option<String>,
+        enabled: Option<bool>,
     ) -> Result<ProceduralSkill, String> {
         let skills = Self::load_skills();
         let target_id = id.as_deref().unwrap_or("").trim();
@@ -4109,6 +4118,9 @@ r#"# Cognitive Episode #{new_index}
         if let Some(pm) = permission_mode {
             skill.permission_mode = pm;
         }
+        if let Some(en) = enabled {
+            skill.enabled = en;
+        }
 
         // 7. Bump version & record refinement
         skill.version += 1;
@@ -4130,7 +4142,7 @@ r#"# Cognitive Episode #{new_index}
     /// Deletes a procedural skill and its folder by ID
     pub fn delete_skill(id: &str) -> Result<(), String> {
         let skills = Self::load_skills();
-        if let Some(target) = skills.iter().find(|s| s.id == id) {
+        if let Some(target) = skills.iter().find(|s| s.id == id || s.id == format!("skill-{}", id)) {
             if let Some(path_str) = &target.folder_path {
                 let path = PathBuf::from(path_str);
                 if path.exists() && path.is_dir() {
@@ -4140,6 +4152,18 @@ r#"# Cognitive Episode #{new_index}
             Ok(())
         } else {
             Err(format!("Skill with id '{}' not found", id))
+        }
+    }
+
+    /// Enables or disables a procedural skill by ID
+    pub fn set_skill_enabled(id: &str, enabled: bool) -> Result<ProceduralSkill, String> {
+        let mut skills = Self::load_skills();
+        if let Some(skill) = skills.iter_mut().find(|s| s.id == id || s.id == format!("skill-{}", id)) {
+            skill.enabled = enabled;
+            Self::save_single_skill(skill)?;
+            Ok(skill.clone())
+        } else {
+            Err(format!("Skill '{}' not found", id))
         }
     }
 
@@ -4155,6 +4179,9 @@ r#"# Cognitive Episode #{new_index}
         skills
             .into_iter()
             .filter(|s| {
+                if !s.enabled {
+                    return false;
+                }
                 let name_match = q_lower.contains(&s.name.to_lowercase());
                 let trigger_match = s.triggers.iter().any(|t| {
                     let t_low = t.to_lowercase();

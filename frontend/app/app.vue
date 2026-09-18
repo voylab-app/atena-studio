@@ -75,11 +75,11 @@
         />
 
         <SettingsScreen v-show="activeTab === 'settings'" :config="config" :params="params"
-          :serviceHealth="serviceHealth" :logs="logs" :hardware="hardware" :currentTheme="theme"
+          :serviceHealth="serviceHealth" :logs="logs" :developerLogs="developerLogs" :isGenerating="isGenerating" :hardware="hardware" :currentTheme="theme"
           :initialSection="settingsInitialSection" :sessions="sessions"
           @saveConfig="handleSaveConfig" @setTheme="handleSetTheme" @setLanguage="handleSetLanguage"
           @checkServices="checkServices" @startMlx="startMlx" @startOllama="startOllama"
-          @stopAllServers="stopAllServers" @clearLogs="clearLogs" @refreshLogs="fetchLogs" @selectFolder="handleSelectFolder"
+          @stopAllServers="stopAllServers" @clearLogs="clearLogs" @clearDeveloperLogs="clearDeveloperLogs" @refreshLogs="fetchLogs" @refreshDeveloperLogs="fetchDeveloperLogs" @selectFolder="handleSelectFolder"
           @refreshMcp="fetchMcpTools" @openAgyLogin="isAgyLoginModalOpen = true" @openSetup="isSetupModalOpen = true"
           @refreshModels="scanModels" @openArchivedModal="isArchivedModalOpen = true" />
       </div>
@@ -239,7 +239,7 @@ import { initPersonas } from '~/utils/personas'
 import { useAppLocale } from './composables/useLocale'
 import { usePlugins } from './composables/usePlugins'
 import { useProjects } from './composables/useProjects'
-import type { ChatMessage, ChatSession, ModelInfo, HardwareInfo, GenerationParams, AppConfig, McpToolWithServer, ServerRequestLog } from '~/types'
+import type { ChatMessage, ChatSession, ModelInfo, HardwareInfo, GenerationParams, AppConfig, McpToolWithServer, ServerRequestLog, DeveloperLogEntry } from '~/types'
 
 const {
   fetchPlugins,
@@ -334,6 +334,7 @@ const loadingModelProgress = ref(0)
 const isScanning = ref(false)
 const isGenerating = ref(false)
 const logs = ref<ServerRequestLog[]>([])
+const developerLogs = ref<DeveloperLogEntry[]>([])
 const mcpTools = ref<McpToolWithServer[]>([])
 
 
@@ -1155,6 +1156,26 @@ const clearLogs = async () => {
   }
 }
 
+const fetchDeveloperLogs = async () => {
+  try {
+    const res = await invoke<DeveloperLogEntry[]>('get_developer_logs')
+    if (res && Array.isArray(res)) {
+      developerLogs.value = res
+    }
+  } catch (err) {
+    console.error('Failed to fetch developer logs:', err)
+  }
+}
+
+const clearDeveloperLogs = async () => {
+  try {
+    await invoke('clear_developer_logs')
+    developerLogs.value = []
+  } catch (err) {
+    console.error('Failed to clear developer logs:', err)
+  }
+}
+
 // Chat Actions
 const createNewSession = (isPrivate = false, projectId: string | null = null) => {
   const targetProjectId = projectId || null
@@ -1266,6 +1287,10 @@ const handleOpenArchivedSession = (id: string) => {
   const session = sessions.value.find((s) => s.id === id)
   selectProject(session?.project_id || null)
   isArchivedModalOpen.value = false
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('atena_active_session', id)
+  }
+  invoke('db_set_setting', { key: 'active_session_id', value: id }).catch(() => {})
 }
 
 const selectSession = (id: string) => {
@@ -1273,6 +1298,10 @@ const selectSession = (id: string) => {
   activeTab.value = 'chat'
   const session = sessions.value.find((s) => s.id === id)
   selectProject(session?.project_id || null)
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('atena_active_session', id)
+  }
+  invoke('db_set_setting', { key: 'active_session_id', value: id }).catch(() => {})
 }
 
 const handleAssignSessionProject = ({ sessionId, projectId }: { sessionId: string; projectId: string | null }) => {
@@ -1563,6 +1592,9 @@ const handleSendMessage = async (payload: any) => {
   currentSession.value.messages.push(assistantMsg)
   isGenerating.value = true
 
+  // Immediately persist user prompt and assistant placeholder so messages are never lost
+  saveSessions(true)
+
   // Build full conversation history (excluding the pending assistant response)
   const chatHistory = currentSession.value.messages
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.id !== assistantMsgId)
@@ -1618,7 +1650,7 @@ const handleSendMessage = async (payload: any) => {
           if (targetMsg.tool_calls && targetMsg.tool_calls.length > 0) {
             targetMsg.tool_calls = targetMsg.tool_calls.filter((tc: any) => tc.status !== 'streaming')
           }
-          saveSessions()
+          saveSessions(true)
 
           runAfterChatTurnHooks({
             userMessage: userText,
@@ -1703,7 +1735,7 @@ const handleSendMessage = async (payload: any) => {
     }
     isGenerating.value = false
   } finally {
-    saveSessions()
+    saveSessions(true)
   }
 }
 
@@ -1940,6 +1972,7 @@ const executeTool = async (toolCall: any, assistantMsg: any, force = false) => {
         try {
           const allSkills = await invoke<any[]>('skills_get_all')
           const matchedSkill = allSkills?.find((s: any) => {
+            if (s.enabled === false) return false
             const sName = (s.name || '').toLowerCase().replace(/[_-]/g, ' ')
             const tName = (targetTool.name || '').toLowerCase().replace(/[_-]/g, ' ')
             return s.name === targetTool.name || s.id === targetTool.name || sName === tName
@@ -2035,6 +2068,7 @@ const processAutoTools = async (assistantMsg: any) => {
         const script = (rawArgs.script_file || rawArgs.script || rawArgs.script_name || rawArgs.file_name || '').trim().toLowerCase()
 
         const matchedSkill = allSkills.find((s: any) => {
+          if (s.enabled === false) return false
           const sId = (s.id || '').toLowerCase()
           const sName = (s.name || '').toLowerCase()
           const cleanSId = sId.replace(/^skill-/, '')
@@ -2242,9 +2276,11 @@ const handleApproveTool = async ({
       const skills = await invoke<any[]>('skills_get_all')
       const targetCmd = (rawArgs.command || rawArgs.cmd || '').trim()
       const matchedSkill = skills.find((s: any) =>
-        (rawArgs.skill_id && s.id === rawArgs.skill_id) ||
-        (rawArgs.skill_name && s.name.toLowerCase() === rawArgs.skill_name.toLowerCase()) ||
-        (targetCmd && s.steps?.some((st: any) => st.command && st.command.trim() === targetCmd))
+        s.enabled !== false && (
+          (rawArgs.skill_id && s.id === rawArgs.skill_id) ||
+          (rawArgs.skill_name && s.name.toLowerCase() === rawArgs.skill_name.toLowerCase()) ||
+          (targetCmd && s.steps?.some((st: any) => st.command && st.command.trim() === targetCmd))
+        )
       )
       if (matchedSkill) {
         await invoke('skills_set_permission_mode', {
@@ -2412,9 +2448,9 @@ const saveSessions = (immediate = false) => {
   }
 }
 
-const loadSessions = async () => {
-  // 1. Initial fast load from localStorage cache if available
-  if (typeof window !== 'undefined') {
+const loadSessions = async (isInitial = false) => {
+  // 1. Initial fast load from localStorage cache if available (only during startup)
+  if (isInitial && typeof window !== 'undefined') {
     const saved = localStorage.getItem('atena_sessions')
     const savedActive = localStorage.getItem('atena_active_session')
     if (saved) {
@@ -2434,12 +2470,38 @@ const loadSessions = async () => {
     const dbSessions = await invoke<ChatSession[]>('db_get_sessions')
     if (Array.isArray(dbSessions) && dbSessions.length > 0) {
       sanitizeSessions(dbSessions)
-      sessions.value = dbSessions
-      const dbActive = await invoke<string | null>('db_get_setting', { key: 'active_session_id' })
-      if (dbActive && sessions.value.some((s) => s.id === dbActive)) {
-        activeSessionId.value = dbActive
-      } else if (!activeSessionId.value && sessions.value.length > 0) {
-        activeSessionId.value = sessions.value[0]?.id || ''
+
+      if (isGenerating.value) {
+        // If actively generating in the current session, do not clobber it with DB data
+        const activeId = activeSessionId.value
+        const activeLocal = sessions.value.find((s) => s.id === activeId)
+        sessions.value = dbSessions.map((dbSess) => {
+          if (dbSess.id === activeId && activeLocal) {
+            return activeLocal
+          }
+          return dbSess
+        })
+      } else {
+        // Preserve any in-memory messages if local active session is more updated than DB
+        const activeId = activeSessionId.value
+        const activeLocal = sessions.value.find((s) => s.id === activeId)
+        const activeInDb = dbSessions.find((s) => s.id === activeId)
+        if (activeLocal && activeInDb && activeLocal.messages.length > activeInDb.messages.length) {
+          activeInDb.messages = [...activeLocal.messages]
+          activeInDb.title = activeLocal.title
+          activeInDb.updated_at = activeLocal.updated_at
+        }
+        sessions.value = dbSessions
+      }
+
+      // Only set activeSessionId from DB if there is no valid active session currently selected
+      if (!activeSessionId.value || !sessions.value.some((s) => s.id === activeSessionId.value)) {
+        const dbActive = await invoke<string | null>('db_get_setting', { key: 'active_session_id' })
+        if (dbActive && sessions.value.some((s) => s.id === dbActive)) {
+          activeSessionId.value = dbActive
+        } else if (sessions.value.length > 0) {
+          activeSessionId.value = sessions.value[0]?.id || ''
+        }
       }
     } else if (sessions.value.length > 0) {
       // Auto-migrate legacy localStorage sessions to SQLite
@@ -2604,16 +2666,27 @@ const fetchGlobalDownloads = async () => {
 let unlistenSessionsUpdated: (() => void) | null = null
 
 onMounted(async () => {
-  await loadSessions()
+  await loadSessions(true)
   await initPersonas()
 
-  if (typeof window !== 'undefined') {
-    window.addEventListener('focus', loadSessions)
-  }
   try {
     const { listen } = await import('@tauri-apps/api/event')
     unlistenSessionsUpdated = await listen('db_sessions_updated', () => {
       loadSessions()
+    })
+    await listen<DeveloperLogEntry>('developer_log_entry', (event) => {
+      if (event.payload) {
+        developerLogs.value.push(event.payload)
+        if (developerLogs.value.length > 1000) {
+          developerLogs.value.splice(0, developerLogs.value.length - 1000)
+        }
+      }
+    })
+    await listen('server_logs_updated', () => {
+      fetchLogs()
+    })
+    await listen('developer_logs_cleared', () => {
+      developerLogs.value = []
     })
   } catch (_) {}
 
@@ -2684,6 +2757,7 @@ onMounted(async () => {
   fetchHardware()
   checkServices()
   fetchLogs()
+  fetchDeveloperLogs()
   // Fallback to disk cache if localStorage had no models
   if (models.value.length === 0) {
     invoke('get_cached_models').then((diskCache) => {
@@ -2958,7 +3032,6 @@ onUnmounted(() => {
     } catch (_) {}
   }
   if (typeof window !== 'undefined') {
-    window.removeEventListener('focus', loadSessions)
     window.removeEventListener('keydown', handleGlobalKeydown)
     window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('click', handleGlobalClick, true)

@@ -1705,6 +1705,9 @@ impl BackendManager {
                 .and_then(|v| v.as_str());
 
             if let Some(matched) = skills.iter().find(|s| {
+                if !s.enabled {
+                    return false;
+                }
                 if let Some(slug) = slug_opt {
                     let clean_s_id = s.id.trim_start_matches("skill-");
                     let clean_slug = slug.trim_start_matches("skill-");
@@ -1741,9 +1744,10 @@ impl BackendManager {
             let skills = crate::services::memory_engine::MemoryGraphEngine::load_skills();
             let norm_name = name.to_lowercase().replace(['_', '-'], " ");
             if let Some(matched_skill) = skills.iter().find(|s| {
-                s.name.eq_ignore_ascii_case(name)
-                    || s.id.eq_ignore_ascii_case(name)
-                    || s.name.to_lowercase().replace(['_', '-'], " ") == norm_name
+                s.enabled
+                    && (s.name.eq_ignore_ascii_case(name)
+                        || s.id.eq_ignore_ascii_case(name)
+                        || s.name.to_lowercase().replace(['_', '-'], " ") == norm_name)
             }) {
                 if let Some(cmd) = matched_skill.steps.iter().find_map(|st| st.effective_command()) {
                     tc.name = "run_command".to_string();
@@ -2755,6 +2759,23 @@ impl BackendManager {
         full_prompt.trim().to_string()
     }
 
+    pub(crate) fn format_payload_preview(payload: &serde_json::Value) -> String {
+        let mut cloned = payload.clone();
+        if let Some(msgs) = cloned.get_mut("messages").and_then(|m| m.as_array_mut()) {
+            for msg in msgs.iter_mut() {
+                if let Some(content) = msg.get("content").and_then(|c| c.as_str()) {
+                    let char_count = content.chars().count();
+                    if char_count > 120 {
+                        let prefix: String = content.chars().take(50).collect();
+                        let suffix: String = content.chars().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect();
+                        msg["content"] = serde_json::json!(format!("{}... <Truncated in logs> ...{}", prefix, suffix));
+                    }
+                }
+            }
+        }
+        serde_json::to_string_pretty(&cloned).unwrap_or_else(|_| payload.to_string())
+    }
+
     /// Executes inference with streaming tokens, metrics, real-time thinking and tool_calls extraction.
     pub async fn execute_stream_callback<F>(
         model: &ModelInfo,
@@ -2872,18 +2893,43 @@ impl BackendManager {
                     }
 
                     log::info!("🚀 [MLX] Enviando requisição SSE para {}", endpoint);
+                    let model_name = model.name.clone();
+                    let body_preview = Self::format_payload_preview(&payload);
+                    let messages_count = safe_messages.len();
+
+                    crate::services::server_ctl::LocalServerController::record_dev_log(
+                        "DEBUG",
+                        None,
+                        &format!("Received request: POST to /v1/chat/completions with body  {}", body_preview),
+                        Some(&body_preview),
+                    );
+                    crate::services::server_ctl::LocalServerController::record_dev_log(
+                        "INFO",
+                        Some(&model_name),
+                        &format!("Running chat completion on conversation with {} messages.", messages_count),
+                        None,
+                    );
+                    crate::services::server_ctl::LocalServerController::record_dev_log(
+                        "INFO",
+                        Some(&model_name),
+                        "Streaming response...",
+                        None,
+                    );
+
                     let t_req = std::time::Instant::now();
                     match client.post(&endpoint).json(&payload).send().await {
                         Ok(resp) => {
                             let status = resp.status();
                             let latency = t_req.elapsed().as_millis() as u64;
-                            crate::services::server_ctl::LocalServerController::record_log(
+                            crate::services::server_ctl::LocalServerController::record_log_detailed(
                                 "POST",
                                 &endpoint,
                                 status.as_u16(),
                                 latency,
                                 est_prompt_tokens,
                                 0,
+                                Some(&model_name),
+                                Some(&body_preview),
                             );
 
                             if !status.is_success() {
@@ -2953,6 +2999,12 @@ impl BackendManager {
                                                             if first_token_time.is_none() && (content.map(|c| !c.is_empty()).unwrap_or(false) || reasoning.map(|r| !r.is_empty()).unwrap_or(false)) {
                                                                 first_token_time = Some(std::time::Instant::now());
                                                                 println!("⚡ [MLX SSE FIRST TOKEN] Recebido em {:?}", start.elapsed());
+                                                                crate::services::server_ctl::LocalServerController::record_dev_log(
+                                                                    "INFO",
+                                                                    Some(&model_name),
+                                                                    "Prompt processing progress: 100.0%",
+                                                                    None,
+                                                                );
                                                             }
 
                                                             if let Some(tool_calls_arr) = delta.get("tool_calls").and_then(|t| t.as_array()) {
@@ -2999,6 +3051,34 @@ impl BackendManager {
                                 let (clean_final, final_tool_calls) = Self::extract_tool_calls(&final_content, dt_ref, params.mcp_tools.as_deref());
                                 log::info!("🏁 [MLX] Streaming finalizado com sucesso ({} caracteres)", clean_final.len());
                                 
+                                let total_latency = start.elapsed().as_millis() as u64;
+                                let comp_tokens = reported_comp.unwrap_or_else(|| {
+                                    (clean_final.len() as f32 / 3.7).ceil() as usize
+                                });
+                                let prompt_toks = reported_prompt.unwrap_or(est_prompt_tokens);
+                                let tps_info = if let Some(tps) = reported_gen_tps {
+                                    format!(" ({:.1} tok/s)", tps)
+                                } else {
+                                    String::new()
+                                };
+
+                                crate::services::server_ctl::LocalServerController::record_dev_log(
+                                    "INFO",
+                                    Some(&model_name),
+                                    &format!("Finished streaming response: {} tokens generated{} in {}ms", comp_tokens, tps_info, total_latency),
+                                    None,
+                                );
+                                crate::services::server_ctl::LocalServerController::record_log_detailed(
+                                    "POST",
+                                    &endpoint,
+                                    200,
+                                    total_latency,
+                                    prompt_toks,
+                                    comp_tokens,
+                                    Some(&model_name),
+                                    Some(&body_preview),
+                                );
+
                                 let final_metrics = Self::compute_generation_metrics(
                                     params,
                                     est_prompt_tokens,
@@ -3094,17 +3174,42 @@ impl BackendManager {
                             }
                         }
 
+                        let model_name = model.name.clone();
+                        let body_preview = Self::format_payload_preview(&payload);
+                        let messages_count = safe_messages.len();
+
+                        crate::services::server_ctl::LocalServerController::record_dev_log(
+                            "DEBUG",
+                            None,
+                            &format!("Received request: POST to /v1/chat/completions with body  {}", body_preview),
+                            Some(&body_preview),
+                        );
+                        crate::services::server_ctl::LocalServerController::record_dev_log(
+                            "INFO",
+                            Some(&model_name),
+                            &format!("Running chat completion on conversation with {} messages.", messages_count),
+                            None,
+                        );
+                        crate::services::server_ctl::LocalServerController::record_dev_log(
+                            "INFO",
+                            Some(&model_name),
+                            "Streaming response...",
+                            None,
+                        );
+
                         let t_req = std::time::Instant::now();
                         if let Ok(resp) = client.post(&endpoint).json(&payload).send().await {
                             let status = resp.status();
                             let latency = t_req.elapsed().as_millis() as u64;
-                            crate::services::server_ctl::LocalServerController::record_log(
+                            crate::services::server_ctl::LocalServerController::record_log_detailed(
                                 "POST",
                                 &endpoint,
                                 status.as_u16(),
                                 latency,
                                 est_prompt_tokens,
                                 0,
+                                Some(&model_name),
+                                Some(&body_preview),
                             );
                             if resp.status().is_success() {
                                 let mut stream = resp.bytes_stream();
@@ -3180,6 +3285,12 @@ impl BackendManager {
 
                                                         if first_token_time.is_none() && (content.map(|c| !c.is_empty()).unwrap_or(false) || reasoning.map(|r| !r.is_empty()).unwrap_or(false)) {
                                                             first_token_time = Some(std::time::Instant::now());
+                                                            crate::services::server_ctl::LocalServerController::record_dev_log(
+                                                                "INFO",
+                                                                Some(&model_name),
+                                                                "Prompt processing progress: 100.0%",
+                                                                None,
+                                                            );
                                                         }
 
                                                         if let Some(tool_calls_arr) = delta.get("tool_calls").and_then(|t| t.as_array()) {
@@ -3221,6 +3332,34 @@ impl BackendManager {
                                 let dt_ref = if accumulated_delta_tools.is_empty() { None } else { Some(&accumulated_delta_tools) };
                                 let (clean_final, final_tool_calls) = Self::extract_tool_calls(&final_content, dt_ref, params.mcp_tools.as_deref());
                                 
+                                let total_latency = start.elapsed().as_millis() as u64;
+                                let comp_tokens = reported_comp.unwrap_or_else(|| {
+                                    (clean_final.len() as f32 / 3.7).ceil() as usize
+                                });
+                                let prompt_toks = reported_prompt.unwrap_or(est_prompt_tokens);
+                                let tps_info = if let Some(tps) = reported_gen_tps {
+                                    format!(" ({:.1} tok/s)", tps)
+                                } else {
+                                    String::new()
+                                };
+
+                                crate::services::server_ctl::LocalServerController::record_dev_log(
+                                    "INFO",
+                                    Some(&model_name),
+                                    &format!("Finished streaming response: {} tokens generated{} in {}ms", comp_tokens, tps_info, total_latency),
+                                    None,
+                                );
+                                crate::services::server_ctl::LocalServerController::record_log_detailed(
+                                    "POST",
+                                    &endpoint,
+                                    200,
+                                    total_latency,
+                                    prompt_toks,
+                                    comp_tokens,
+                                    Some(&model_name),
+                                    Some(&body_preview),
+                                );
+
                                 let final_metrics = Self::compute_generation_metrics(
                                     params,
                                     est_prompt_tokens,

@@ -801,6 +801,7 @@ pub async fn dispatch_invoke(
                 s_list
             };
 
+            let enabled = args.get("enabled").and_then(|v| v.as_bool());
             let skill = MemoryGraphEngine::learn_or_refine_skill_advanced(
                 id,
                 &name,
@@ -810,6 +811,7 @@ pub async fn dispatch_invoke(
                 refinement_note,
                 env_vars,
                 permission_mode,
+                enabled,
             );
             Ok(serde_json::to_value(skill).map_err(|e| e.to_string())?)
         }
@@ -838,27 +840,35 @@ pub async fn dispatch_invoke(
             let refinement_note = args.get("refinementNote").or_else(|| args.get("refinement_note")).and_then(|v| v.as_str()).map(|s| s.to_string());
             let env_vars: Option<HashMap<String, String>> = serde_json::from_value(args.get("envVars").or_else(|| args.get("env_vars")).cloned().unwrap_or(json!(null))).ok();
             let permission_mode = args.get("permissionMode").or_else(|| args.get("permission_mode")).and_then(|v| v.as_str()).map(|s| s.to_string());
-            let skill = MemoryGraphEngine::update_skill_with_scripts(id, name, description, triggers, steps, scripts, refinement_note, env_vars, permission_mode)?;
+            let enabled = args.get("enabled").and_then(|v| v.as_bool());
+            let skill = MemoryGraphEngine::update_skill_with_scripts(id, name, description, triggers, steps, scripts, refinement_note, env_vars, permission_mode, enabled)?;
             Ok(serde_json::to_value(skill).map_err(|e| e.to_string())?)
         }
 
         "skills_delete" => {
-            let skill_id = args.get("skillId").and_then(|v| v.as_str()).unwrap_or_default();
+            let skill_id = args.get("skillId").or_else(|| args.get("id")).and_then(|v| v.as_str()).unwrap_or_default();
             MemoryGraphEngine::delete_skill(skill_id)?;
             Ok(json!(null))
         }
 
         "skills_set_permission_mode" => {
-            let skill_id = args.get("skillId").and_then(|v| v.as_str()).unwrap_or_default();
-            let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or_default();
+            let skill_id = args.get("skillId").or_else(|| args.get("id")).and_then(|v| v.as_str()).unwrap_or_default();
+            let mode = args.get("mode").or_else(|| args.get("permissionMode")).or_else(|| args.get("permission_mode")).and_then(|v| v.as_str()).unwrap_or_default();
             let mut skills = MemoryGraphEngine::load_skills();
-            if let Some(skill) = skills.iter_mut().find(|s| s.id == skill_id) {
+            if let Some(skill) = skills.iter_mut().find(|s| s.id == skill_id || s.id == format!("skill-{}", skill_id)) {
                 skill.permission_mode = mode.to_string();
-                MemoryGraphEngine::save_skills(&skills)?;
+                MemoryGraphEngine::save_single_skill(skill)?;
                 Ok(json!(null))
             } else {
                 Err(format!("Skill '{}' not found", skill_id))
             }
+        }
+
+        "skills_set_enabled" => {
+            let skill_id = args.get("skillId").or_else(|| args.get("id")).and_then(|v| v.as_str()).unwrap_or_default();
+            let enabled = args.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+            MemoryGraphEngine::set_skill_enabled(skill_id, enabled)?;
+            Ok(json!(null))
         }
 
         // Episodes
