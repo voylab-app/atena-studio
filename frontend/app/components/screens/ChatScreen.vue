@@ -691,6 +691,7 @@ const showPersonasModal = ref(false)
 const showEfficiencyModal = ref(false)
 const showMoreActions = ref(false)
 const inputText = ref('')
+const drafts = ref<Record<string, string>>({})
 const attachments = ref<any[]>([])
 const isDragging = ref(false)
 const dragCounter = ref(0)
@@ -1325,6 +1326,9 @@ const handleSend = () => {
     attachments: attachmentsPayload
   })
 
+  if (props.currentSession?.id) {
+    delete drafts.value[props.currentSession.id]
+  }
   inputText.value = ''
   attachments.value = []
   if (textareaRef.value) {
@@ -1410,10 +1414,17 @@ const contextPct = computed(() => {
 
 const isContextFull = computed(() => contextUsed.value >= contextLimit.value)
 
-// Watch session change to reset scroll
+// Watch session change to switch drafts and reset scroll
 watch(
   () => props.currentSession?.id,
-  () => {
+  (newId, oldId) => {
+    if (oldId) {
+      drafts.value[oldId] = inputText.value
+    }
+    inputText.value = newId ? (drafts.value[newId] || '') : ''
+    nextTick(() => {
+      adjustTextareaHeight()
+    })
     userScrolledUp.value = false
     showScrollBottom.value = false
     scrollToBottom(true)

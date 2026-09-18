@@ -19,6 +19,18 @@ pub struct ServerRequestLog {
     pub latency_ms: u64,
     pub tokens_prompt: usize,
     pub tokens_completion: usize,
+    pub model: Option<String>,
+    pub body_preview: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeveloperLogEntry {
+    pub id: String,
+    pub timestamp: DateTime<Utc>,
+    pub level: String, // "INFO", "DEBUG", "WARN", "ERROR"
+    pub tag: Option<String>,
+    pub message: String,
+    pub details: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

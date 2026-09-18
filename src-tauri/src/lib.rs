@@ -15,7 +15,7 @@ use crate::core::hardware::SystemHardwareInfo;
 use crate::core::mcp::{McpServerConfig, McpToolDefinition, McpToolWithServer};
 use crate::core::memory::{CompressionType, GraphOptimizationReport, NodeType, ProceduralSkill, RelationType, SkillCommandResult, SkillScriptFilePayload, SkillStep, SleepConsolidationReport, VigiliaEvent};
 use crate::core::model::{BackendType, ChatMessage, InferenceParams, ModelInfo};
-use crate::core::server::ServerRequestLog;
+use crate::core::server::{DeveloperLogEntry, ServerRequestLog};
 use crate::services::backend::{BackendManager, ModelLoadProgress};
 use crate::services::downloader::{
     DownloadTaskProgress, HfModelDetail, HfModelSummary, ModelDownloader,
@@ -1224,6 +1224,17 @@ async fn get_server_logs(state: State<'_, AppState>) -> Result<Vec<ServerRequest
         *state_logs = logs.clone();
     }
     Ok(logs)
+}
+
+#[command]
+async fn get_developer_logs() -> Result<Vec<DeveloperLogEntry>, String> {
+    Ok(LocalServerController::get_developer_logs())
+}
+
+#[command]
+async fn clear_developer_logs() -> Result<(), String> {
+    LocalServerController::clear_developer_logs();
+    Ok(())
 }
 
 #[command]
@@ -3549,6 +3560,8 @@ pub fn run() {
             start_ollama_server,
             stop_all_servers,
             get_server_logs,
+            get_developer_logs,
+            clear_developer_logs,
             clear_server_logs,
             get_mcp_servers,
             save_mcp_servers,
@@ -3650,6 +3663,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            LocalServerController::init_handle(handle.clone());
             if let Err(e) = tray::setup_tray(&handle) {
                 log::warn!("Failed to initialize system tray: {}", e);
             }

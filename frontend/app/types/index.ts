@@ -304,5 +304,16 @@ export interface ServerRequestLog {
   latency_ms: number
   tokens_prompt: number
   tokens_completion: number
+  model?: string | null
+  body_preview?: string | null
+}
+
+export interface DeveloperLogEntry {
+  id: string
+  timestamp: string
+  level: 'INFO' | 'DEBUG' | 'WARN' | 'ERROR'
+  tag?: string | null
+  message: string
+  details?: string | null
 }
 
