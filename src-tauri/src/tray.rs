@@ -11,7 +11,7 @@ pub const TRAY_ID: &str = "atena-main-tray";
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Build Menu Items
-    let title_item = MenuItem::with_id(app, "tray_title", "● Atena Studio", false, None::<&str>)?;
+    let title_item = MenuItem::with_id(app, "tray_title", "Atena Studio", false, None::<&str>)?;
     let status_sep = PredefinedMenuItem::separator(app)?;
     
     let show_item = MenuItem::with_id(app, "tray_show", "Show Atena Studio", true, None::<&str>)?;

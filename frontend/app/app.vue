@@ -1967,6 +1967,10 @@ const executeTool = async (toolCall: any, assistantMsg: any, force = false) => {
         })
       }
     } else {
+      if (!targetTool.server_id && (targetTool.name.startsWith('atena_') || targetTool.name.startsWith('atena'))) {
+        targetTool.server_id = 'atena_native'
+      }
+
       if (!targetTool.server_id) {
         // Defensive check: verify if the tool name corresponds to an existing procedural skill
         try {
@@ -2195,7 +2199,12 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
 
           // Check if this follow-up also generated new tool calls!
           if (target.tool_calls && target.tool_calls.length > 0) {
-            processAutoTools(target)
+            target._reactStep = (previousAssistantMsg._reactStep || 1) + 1
+            if (target._reactStep <= 6) {
+              processAutoTools(target)
+            } else {
+              console.warn('[Autonomous ReAct] Step limit (6 iterations) reached. Halting auto-loop to protect budget.')
+            }
           }
         }
       }
@@ -2688,6 +2697,18 @@ onMounted(async () => {
     await listen('developer_logs_cleared', () => {
       developerLogs.value = []
     })
+    await listen<any>('atena://scheduled-task-finished', (event) => {
+      loadSessions()
+      if (event.payload?.task_name) {
+        addNotification({
+          type: event.payload.success ? 'download_completed' : 'download_error',
+          title: event.payload.task_name,
+          message: event.payload.success
+            ? (event.payload.output ? event.payload.output.slice(0, 140) + '...' : 'Task executed successfully.')
+            : `Failed: ${event.payload.output || 'Unknown error'}`
+        })
+      }
+    })
   } catch (_) {}
 
   // Load native app configuration if available
@@ -2829,8 +2850,24 @@ onMounted(async () => {
     window.addEventListener('keydown', handleGlobalKeydown)
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('click', handleGlobalClick, true)
+    window.addEventListener('open-chat-session', handleOpenChatSession)
   }
 })
+
+const handleOpenChatSession = async (e: Event) => {
+  const customEvt = e as CustomEvent<{ sessionId: string }>
+  const targetId = customEvt?.detail?.sessionId
+  if (!targetId) return
+  try {
+    const dbSessions = await invoke<ChatSession[]>('db_get_sessions')
+    if (Array.isArray(dbSessions) && dbSessions.length > 0) {
+      sessions.value = dbSessions
+    }
+  } catch (err) {
+    console.error('Failed to reload sessions:', err)
+  }
+  selectSession(targetId)
+}
 
 const handleGlobalClick = (e: MouseEvent) => {
   const target = (e.target as HTMLElement)?.closest('a')
@@ -3035,6 +3072,7 @@ onUnmounted(() => {
     window.removeEventListener('keydown', handleGlobalKeydown)
     window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('click', handleGlobalClick, true)
+    window.removeEventListener('open-chat-session', handleOpenChatSession)
   }
   if (unlistenSessionsUpdated) {
     unlistenSessionsUpdated()

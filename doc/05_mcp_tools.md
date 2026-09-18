@@ -61,3 +61,16 @@ The command accepts an optional `target_locale: Option<String>` parameter:
 * **`en` (English)**: Instructs the LLM and heuristic parser to format names into elegant Title Case and natural UI labels (e.g., *"Upcoming Transactions"*, *"Start Date"*). The heuristic fallback cleans up acronyms (ID, URL, API, MCP) and applies clean capitalization.
 * **`es` (Spanish)**: Applies Spanish system instructions and localized heuristic dictionary entries (e.g., *"Transacciones Próximas"*, *"Fecha Inicial"*).
 * **`pt-BR` (Default / Baseline)**: Uses Portuguese prompt refinements and comprehensive localized mappings.
+
+---
+
+## 5. Built-in Native Tools (Zero-MCP Setup)
+
+In addition to external MCP servers, Atena Studio embeds first-class native tools registered under `atena_native`:
+* **`atena_web_search`**: Public web search powered by a multi-provider resilient engine (Bing, DuckDuckGo) without external binaries or API keys.
+* **`atena_fetch_webpage`**: Webpage reader converting HTML to sanitized, clean Markdown text.
+* **`atena_scratchpad_write` / `atena_scratchpad_read` / `atena_scratchpad_clear`**: Working memory scratchpad for active tasks.
+* **`atena_search_memory` / `atena_search_episodes` / `atena_read_episode`**: Associative memory graph queries.
+
+Refer to `doc/12_autonomous_agent_and_scheduler.md` for architectural details.
+

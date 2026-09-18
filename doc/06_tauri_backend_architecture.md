@@ -127,3 +127,10 @@ Atena Studio provides first-class containerization support for cloud, home serve
 ## 7. System Tray & Remote Messaging Gateways
 
 For detailed information on the native background daemon, system tray menu, and external bot gateways (Telegram & Discord), consult [`doc/11_remote_gateways_and_tray.md`](./11_remote_gateways_and_tray.md).
+
+---
+
+## 8. Background Scheduler & Autonomous ReAct Engine
+
+For technical specifications on the Tokio background scheduler daemon, zero-MCP native tools, and multi-step autonomous loop runner, consult [`doc/12_autonomous_agent_and_scheduler.md`](./12_autonomous_agent_and_scheduler.md).
+

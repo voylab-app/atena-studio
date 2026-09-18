@@ -348,6 +348,17 @@ async fn handle_telegram_message(
                     }
                 });
 
+                if tc.name == "atena_schedule_task" {
+                    if let Some(obj) = tc.arguments.as_object_mut() {
+                        if !obj.contains_key("delivery_channel") {
+                            obj.insert("delivery_channel".to_string(), serde_json::json!("telegram"));
+                        }
+                        if !obj.contains_key("delivery_target") {
+                            obj.insert("delivery_target".to_string(), serde_json::json!(chat_id.to_string()));
+                        }
+                    }
+                }
+
                 log::info!("[Telegram Gateway] Invoking tool '{}' on '{}' with args: {:?}", tc.name, server_id, tc.arguments);
                 match crate::execute_tool_call_internal(&state, &server_id, &tc.name, tc.arguments.clone()).await {
                     Ok(res) => {
@@ -585,4 +596,25 @@ async fn send_chunked_telegram_message(
         let _ = send_telegram_message(client, base_url, chat_id, chunk).await;
         remaining = remaining[split_idx..].trim_start();
     }
+}
+
+/// Sends an asynchronous, proactive Telegram message directly using the configured bot token
+pub async fn send_proactive_telegram_message(
+    bot_token: &str,
+    chat_id: i64,
+    text: &str,
+) -> Result<(), String> {
+    let token = bot_token.trim();
+    if token.is_empty() {
+        return Err("Telegram bot token is empty".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let base_url = format!("https://api.telegram.org/bot{}", token);
+    send_chunked_telegram_message(&client, &base_url, chat_id, text).await;
+    Ok(())
 }

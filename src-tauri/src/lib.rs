@@ -40,6 +40,8 @@ pub struct AppState {
     pub memory_engine: Mutex<MemoryGraphEngine>,
     pub db: Arc<crate::services::db::DatabaseService>,
     pub gateways_manager: Arc<crate::services::gateways::GatewaysManager>,
+    pub scratchpad: Arc<crate::services::scratchpad::SessionScratchpadManager>,
+    pub scheduler: Arc<crate::services::scheduler::BackgroundScheduler>,
 }
 
 impl AppState {
@@ -64,6 +66,8 @@ impl AppState {
             memory_engine: Mutex::new(initial_memory_engine),
             db,
             gateways_manager: Arc::new(crate::services::gateways::GatewaysManager::new()),
+            scratchpad: Arc::new(crate::services::scratchpad::SessionScratchpadManager::new()),
+            scheduler: Arc::new(crate::services::scheduler::BackgroundScheduler::new()),
         }
     }
 }
@@ -652,12 +656,16 @@ async fn save_app_config(
         if let Some(ct) = config.get("close_to_tray").and_then(|v| v.as_bool()) {
             current.close_to_tray = ct;
         }
+        if let Some(tz) = config.get("timezone").and_then(|v| v.as_str()) {
+            current.timezone = tz.to_string();
+        }
         current.save()?;
         current
     };
 
     // Synchronize background gateway workers with updated configuration
     state.gateways_manager.sync_with_config(app, &saved_cfg).await;
+    crate::services::scheduler::BackgroundScheduler::refresh_all_task_schedules(&state);
     Ok(())
 }
 
@@ -2170,6 +2178,171 @@ pub async fn execute_tool_call_internal(
                 let res = engine.search_active_context_for_query(query);
                 return Ok(serde_json::json!({ "result": res.unwrap_or_else(|| "Nenhum registro encontrado na memória para esta consulta.".to_string()) }));
             }
+            "atena_web_search" => {
+                let query = arguments.get("query").and_then(|v| v.as_str()).unwrap_or_default();
+                let max_results = arguments.get("max_results").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                let results = crate::services::web_tools::WebTools::search(query, max_results).await?;
+                return Ok(serde_json::to_value(&results).unwrap_or(serde_json::json!([])));
+            }
+            "atena_fetch_webpage" => {
+                let url = arguments.get("url").and_then(|v| v.as_str()).unwrap_or_default();
+                let max_chars = arguments.get("max_characters").and_then(|v| v.as_u64()).map(|n| n as usize);
+                let content = crate::services::web_tools::WebTools::fetch_webpage(url, max_chars).await?;
+                return Ok(serde_json::json!({ "url": url, "content": content }));
+            }
+            "atena_scratchpad_write" => {
+                let key = arguments.get("key").and_then(|v| v.as_str()).unwrap_or("default");
+                let content = arguments.get("content").and_then(|v| v.as_str()).unwrap_or_default();
+                let session_id = arguments.get("session_id").and_then(|v| v.as_str()).unwrap_or("active_session");
+                state.scratchpad.write(session_id, key, content).await;
+                return Ok(serde_json::json!({ "success": true, "key": key, "message": "Note recorded in task scratchpad." }));
+            }
+            "atena_scratchpad_read" => {
+                let session_id = arguments.get("session_id").and_then(|v| v.as_str()).unwrap_or("active_session");
+                if let Some(key) = arguments.get("key").and_then(|v| v.as_str()) {
+                    let val = state.scratchpad.read_key(session_id, key).await;
+                    return Ok(serde_json::json!({ "key": key, "content": val }));
+                } else {
+                    let all = state.scratchpad.read_all(session_id).await;
+                    return Ok(serde_json::to_value(&all).unwrap_or(serde_json::json!({})));
+                }
+            }
+            "atena_scratchpad_clear" => {
+                let session_id = arguments.get("session_id").and_then(|v| v.as_str()).unwrap_or("active_session");
+                state.scratchpad.clear(session_id).await;
+                return Ok(serde_json::json!({ "success": true, "message": "Task scratchpad cleared." }));
+            }
+            "atena_schedule_task" => {
+                let name = arguments.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                let cron_expr = arguments.get("cron_expr").and_then(|v| v.as_str()).unwrap_or("@daily");
+                let action_type = arguments.get("action_type").and_then(|v| v.as_str()).unwrap_or("autonomous_prompt");
+                let description = arguments.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let prompt = arguments.get("prompt").and_then(|v| v.as_str()).unwrap_or_default();
+
+                let skill_slug = arguments.get("skill_slug")
+                    .or_else(|| arguments.get("slug"))
+                    .or_else(|| arguments.get("skill_id"))
+                    .or_else(|| arguments.get("skillId"))
+                    .and_then(|v| v.as_str());
+                let script_file = arguments.get("script_file")
+                    .or_else(|| arguments.get("script"))
+                    .and_then(|v| v.as_str());
+                let tool_name = arguments.get("tool_name").and_then(|v| v.as_str());
+                let raw_args = arguments.get("arguments").or_else(|| arguments.get("args")).cloned();
+
+                let payload = if action_type == "autonomous_prompt" {
+                    serde_json::json!({ "prompt": prompt }).to_string()
+                } else if action_type == "skill" {
+                    let mut p_obj = serde_json::json!({
+                        "prompt": prompt,
+                    });
+                    if let Some(slug) = skill_slug {
+                        p_obj["skill_slug"] = serde_json::Value::String(slug.to_string());
+                    }
+                    if let Some(script) = script_file {
+                        p_obj["script_file"] = serde_json::Value::String(script.to_string());
+                    }
+                    if let Some(t_name) = tool_name {
+                        p_obj["tool_name"] = serde_json::Value::String(t_name.to_string());
+                    }
+                    if let Some(a) = raw_args {
+                        p_obj["arguments"] = a;
+                    }
+                    p_obj.to_string()
+                } else {
+                    serde_json::json!({}).to_string()
+                };
+
+                let delivery_channel = arguments.get("delivery_channel").and_then(|v| v.as_str()).unwrap_or("chat");
+                let delivery_target = arguments.get("delivery_target").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                let task_id = format!("task-{}", chrono::Utc::now().timestamp_millis());
+                let now = chrono::Utc::now().to_rfc3339();
+                let task = crate::services::db::DbScheduledTask {
+                    id: task_id.clone(),
+                    name: name.to_string(),
+                    description,
+                    cron_expr: cron_expr.to_string(),
+                    action_type: action_type.to_string(),
+                    payload,
+                    enabled: true,
+                    last_run: None,
+                    next_run: crate::services::scheduler::BackgroundScheduler::compute_next_run(cron_expr, chrono::Utc::now()).map(|dt| dt.to_rfc3339()),
+                    delivery_channel: delivery_channel.to_string(),
+                    delivery_target,
+                    last_result: None,
+                    created_at: now.clone(),
+                    updated_at: now,
+                };
+                state.db.save_scheduled_task(&task)?;
+
+                let run_immediately = arguments.get("run_immediately").and_then(|v| v.as_bool()).unwrap_or(false);
+                let run_result = if run_immediately {
+                    let (success, out) = Box::pin(crate::services::scheduler::BackgroundScheduler::execute_task_direct(state, &task)).await;
+                    Some(serde_json::json!({
+                        "executed": true,
+                        "success": success,
+                        "output": out
+                    }))
+                } else {
+                    None
+                };
+
+                return Ok(serde_json::json!({
+                    "success": true,
+                    "task_id": task_id,
+                    "message": format!("Routine '{}' successfully scheduled with schedule '{}'.", name, cron_expr),
+                    "immediate_execution": run_result
+                }));
+            }
+            "atena_list_scheduled_tasks" => {
+                let tasks = state.db.get_scheduled_tasks()?;
+                let summary: Vec<serde_json::Value> = tasks.into_iter().map(|t| {
+                    serde_json::json!({
+                        "id": t.id,
+                        "name": t.name,
+                        "cron_expr": t.cron_expr,
+                        "action_type": t.action_type,
+                        "enabled": t.enabled,
+                        "last_run": t.last_run,
+                        "next_run": t.next_run
+                    })
+                }).collect();
+                return Ok(serde_json::json!(summary));
+            }
+            "atena_cancel_scheduled_task" => {
+                let identifier = arguments.get("identifier").and_then(|v| v.as_str()).unwrap_or_default();
+                let tasks = state.db.get_scheduled_tasks()?;
+                if let Some(target) = tasks.into_iter().find(|t| t.id == identifier || t.name.eq_ignore_ascii_case(identifier) || t.name.to_lowercase().contains(&identifier.to_lowercase())) {
+                    state.db.delete_scheduled_task(&target.id)?;
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "message": format!("Routine '{}' ({}) successfully cancelled.", target.name, target.id)
+                    }));
+                } else {
+                    return Err(format!("Routine with identifier '{}' not found.", identifier));
+                }
+            }
+            "atena_run_scheduled_task" => {
+                let identifier = arguments.get("identifier").and_then(|v| v.as_str()).unwrap_or_default();
+                let tasks = state.db.get_scheduled_tasks()?;
+                if let Some(target) = tasks.into_iter().find(|t| t.id == identifier || t.name.eq_ignore_ascii_case(identifier) || t.name.to_lowercase().contains(&identifier.to_lowercase())) {
+                    let (success, output) = Box::pin(crate::services::scheduler::BackgroundScheduler::execute_task_direct(state, &target)).await;
+                    return Ok(serde_json::json!({
+                        "success": success,
+                        "task_id": target.id,
+                        "task_name": target.name,
+                        "output": output,
+                        "message": if success {
+                            format!("Routine '{}' executed successfully.", target.name)
+                        } else {
+                            format!("Routine '{}' finished with error: {}", target.name, output)
+                        }
+                    }));
+                } else {
+                    return Err(format!("Routine with identifier '{}' not found.", identifier));
+                }
+            }
             _ => return Err(format!("Ferramenta nativa '{}' desconhecida.", tool_name)),
         }
     }
@@ -3514,6 +3687,116 @@ async fn db_get_all_settings(
     state.db.get_all_settings()
 }
 
+#[command]
+async fn scheduler_get_tasks(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::services::db::DbScheduledTask>, String> {
+    state.db.get_scheduled_tasks()
+}
+
+#[command]
+async fn scheduler_save_task(
+    mut task: crate::services::db::DbScheduledTask,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if task.next_run.is_none() {
+        task.next_run = crate::services::scheduler::BackgroundScheduler::compute_next_run(&task.cron_expr, chrono::Utc::now()).map(|dt| dt.to_rfc3339());
+    }
+    state.db.save_scheduled_task(&task)
+}
+
+#[command]
+async fn scheduler_delete_task(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.db.delete_scheduled_task(&task_id)
+}
+
+#[command]
+async fn scheduler_toggle_task(
+    task_id: String,
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let tasks = state.db.get_scheduled_tasks()?;
+    if let Some(mut task) = tasks.into_iter().find(|t| t.id == task_id) {
+        task.enabled = enabled;
+        state.db.save_scheduled_task(&task)?;
+    }
+    Ok(())
+}
+
+#[command]
+async fn scheduler_run_now(
+    task_id: String,
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let tasks = state.db.get_scheduled_tasks()?;
+    if let Some(task) = tasks.into_iter().find(|t| t.id == task_id) {
+        tauri::async_runtime::spawn(async move {
+            crate::services::scheduler::BackgroundScheduler::execute_task(app_handle, task).await;
+        });
+        Ok(())
+    } else {
+        Err(format!("Task '{}' not found", task_id))
+    }
+}
+
+#[command]
+async fn start_autonomous_agent_task(
+    prompt: String,
+    max_steps: Option<u32>,
+    session_id: Option<String>,
+    on_event: Channel<crate::services::agent_loop::AgentStepEvent>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let app_cfg = crate::core::config::AppConfig::load();
+    let active_model = state.active_model.lock().await.clone();
+    let sys_prompt = "You are Atena, an economic and autonomous assistant. Solve the user's task using available tools step by step.".to_string();
+
+    let req = crate::StreamChatRequest {
+        model: active_model,
+        system_prompt: sys_prompt,
+        messages: Some(vec![]),
+        user_message: Some(prompt),
+        session_id,
+        session_title: Some("Autonomous Task".to_string()),
+        params: crate::core::model::InferenceParams::default(),
+        mlx_host: app_cfg.mlx_server_host,
+        mlx_port: app_cfg.mlx_server_port,
+        ollama_host: app_cfg.ollama_host,
+        ollama_port: app_cfg.ollama_port,
+        enable_memory: Some(app_cfg.enable_cognitive_memory),
+        enable_facts_memory: Some(app_cfg.enable_facts_memory),
+        enable_skills_memory: Some(app_cfg.enable_skills_memory),
+        enable_episodic_memory: Some(app_cfg.enable_episodic_memory),
+    };
+
+    let cancel_tok = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let cb = Arc::new(move |evt: crate::services::agent_loop::AgentStepEvent| {
+        let _ = on_event.send(evt);
+    });
+
+    crate::services::agent_loop::AutonomousAgentRunner::run_loop(
+        &state,
+        req,
+        max_steps.unwrap_or(6),
+        cancel_tok,
+        cb,
+    ).await.map(|res| res.final_answer)
+}
+
+#[command]
+async fn scheduler_get_task_runs(
+    task_id: Option<String>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::services::db::DbScheduledTaskRun>, String> {
+    state.db.get_task_runs(task_id.as_deref(), limit.unwrap_or(50))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState::new();
@@ -3659,7 +3942,14 @@ pub fn run() {
             get_gateways_status,
             test_telegram_connection,
             test_discord_connection,
-            restart_gateways
+            restart_gateways,
+            scheduler_get_tasks,
+            scheduler_save_task,
+            scheduler_delete_task,
+            scheduler_toggle_task,
+            scheduler_run_now,
+            scheduler_get_task_runs,
+            start_autonomous_agent_task
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -3670,9 +3960,12 @@ pub fn run() {
             let state = app.state::<AppState>();
             let gateways = state.gateways_manager.clone();
             let cfg = crate::core::config::AppConfig::load();
+            let gw_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
-                gateways.sync_with_config(handle, &cfg).await;
+                gateways.sync_with_config(gw_handle, &cfg).await;
             });
+            let scheduler = state.scheduler.clone();
+            scheduler.start(handle);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -3683,6 +3976,7 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
                 let _ = app_handle.save_window_state(StateFlags::all());
                 let state = app_handle.state::<AppState>();
+                state.scheduler.stop();
                 state.gateways_manager.stop_all();
                 state.backend_manager.stop_all_sync();
                 if let Ok(engine) = state.memory_engine.try_lock() {

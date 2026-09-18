@@ -82,6 +82,69 @@ pub struct DbPersona {
     pub is_custom: bool,
 }
 
+fn default_delivery_channel() -> String {
+    "chat".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbScheduledTask {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub cron_expr: String,
+    pub action_type: String,
+    pub payload: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub last_run: Option<String>,
+    #[serde(default)]
+    pub next_run: Option<String>,
+    #[serde(default = "default_delivery_channel")]
+    pub delivery_channel: String, // "chat", "telegram", "both", "silent"
+    #[serde(default)]
+    pub delivery_target: Option<String>, // e.g. Telegram chat ID
+    #[serde(default)]
+    pub last_result: Option<String>, // Log / snippet of last execution
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbTaskRunStep {
+    pub step: u32,
+    pub thought: Option<String>,
+    pub tool_name: String,
+    pub arguments: serde_json::Value,
+    pub status: String,
+    pub result: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbScheduledTaskRun {
+    pub id: String,
+    pub task_id: String,
+    pub task_name: String,
+    pub action_type: String,
+    pub delivery_channel: String,
+    pub status: String, // "success" | "error"
+    #[serde(default = "default_step_count")]
+    pub steps_count: u32,
+    #[serde(default)]
+    pub tools_used: Option<String>, // JSON array string of tool names used
+    #[serde(default)]
+    pub steps_detail: Option<String>, // JSON array string of DbTaskRunStep
+    pub output: String,
+    #[serde(default)]
+    pub session_id: Option<String>, // Optional session_id if delivered to chat
+    pub executed_at: String,
+}
+
+fn default_step_count() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DbPersonasData {
     pub custom_personas: Vec<DbPersona>,
@@ -192,9 +255,51 @@ impl DatabaseService {
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                cron_expr TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_run TEXT,
+                next_run TEXT,
+                delivery_channel TEXT NOT NULL DEFAULT 'chat',
+                delivery_target TEXT,
+                last_result TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS scheduled_task_runs (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                task_name TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                delivery_channel TEXT NOT NULL,
+                status TEXT NOT NULL,
+                steps_count INTEGER NOT NULL DEFAULT 1,
+                tools_used TEXT,
+                steps_detail TEXT,
+                output TEXT NOT NULL,
+                session_id TEXT,
+                executed_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_task_runs_task_id ON scheduled_task_runs(task_id);
+            CREATE INDEX IF NOT EXISTS idx_task_runs_executed_at ON scheduled_task_runs(executed_at DESC);
             ",
         )
         .map_err(|e| format!("Failed to apply database migrations: {}", e))?;
+
+        // Migrations for newer columns on existing installations
+        let _ = conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN delivery_channel TEXT NOT NULL DEFAULT 'chat'", []);
+        let _ = conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN delivery_target TEXT", []);
+        let _ = conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN last_result TEXT", []);
+        let _ = conn.execute("ALTER TABLE scheduled_task_runs ADD COLUMN steps_detail TEXT", []);
+        let _ = conn.execute("ALTER TABLE scheduled_task_runs ADD COLUMN session_id TEXT", []);
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -931,6 +1036,210 @@ impl DatabaseService {
         }
 
         Ok(map)
+    }
+
+    // ==========================================
+    // Scheduled Tasks
+    // ==========================================
+
+    pub fn get_scheduled_tasks(&self) -> Result<Vec<DbScheduledTask>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, description, cron_expr, action_type, payload,
+                        enabled, last_run, next_run, created_at, updated_at,
+                        delivery_channel, delivery_target, last_result
+                 FROM scheduled_tasks
+                 ORDER BY created_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(DbScheduledTask {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    cron_expr: row.get(3)?,
+                    action_type: row.get(4)?,
+                    payload: row.get(5)?,
+                    enabled: row.get::<_, i64>(6)? != 0,
+                    last_run: row.get(7)?,
+                    next_run: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
+                    delivery_channel: row.get::<_, Option<String>>(11)?.unwrap_or_else(|| "chat".to_string()),
+                    delivery_target: row.get(12)?,
+                    last_result: row.get(13)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut tasks = Vec::new();
+        for r in rows {
+            tasks.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(tasks)
+    }
+
+    pub fn save_scheduled_task(&self, task: &DbScheduledTask) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let now = Utc::now().to_rfc3339();
+        let enabled_int = if task.enabled { 1 } else { 0 };
+
+        conn.execute(
+            "INSERT INTO scheduled_tasks (id, name, description, cron_expr, action_type, payload, enabled, last_run, next_run, delivery_channel, delivery_target, last_result, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                cron_expr = excluded.cron_expr,
+                action_type = excluded.action_type,
+                payload = excluded.payload,
+                enabled = excluded.enabled,
+                last_run = COALESCE(excluded.last_run, scheduled_tasks.last_run),
+                next_run = COALESCE(excluded.next_run, scheduled_tasks.next_run),
+                delivery_channel = excluded.delivery_channel,
+                delivery_target = excluded.delivery_target,
+                last_result = COALESCE(excluded.last_result, scheduled_tasks.last_result),
+                updated_at = excluded.updated_at",
+            params![
+                task.id,
+                task.name,
+                task.description,
+                task.cron_expr,
+                task.action_type,
+                task.payload,
+                enabled_int,
+                task.last_run,
+                task.next_run,
+                task.delivery_channel,
+                task.delivery_target,
+                task.last_result,
+                task.created_at,
+                now
+            ],
+        )
+        .map_err(|e| format!("Failed to save scheduled task: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn delete_scheduled_task(&self, task_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM scheduled_tasks WHERE id = ?1", params![task_id])
+            .map_err(|e| format!("Failed to delete scheduled task: {}", e))?;
+        Ok(())
+    }
+
+    pub fn update_task_run_timestamps(&self, task_id: &str, last_run: &str, next_run: Option<&str>, last_result: Option<&str>) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE scheduled_tasks SET last_run = ?1, next_run = ?2, last_result = ?3, updated_at = ?4 WHERE id = ?5",
+            params![last_run, next_run, last_result, Utc::now().to_rfc3339(), task_id],
+        )
+        .map_err(|e| format!("Failed to update task run timestamps: {}", e))?;
+        Ok(())
+    }
+
+    pub fn record_task_run(&self, run: &DbScheduledTaskRun) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO scheduled_task_runs (id, task_id, task_name, action_type, delivery_channel, status, steps_count, tools_used, steps_detail, output, session_id, executed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                run.id,
+                run.task_id,
+                run.task_name,
+                run.action_type,
+                run.delivery_channel,
+                run.status,
+                run.steps_count,
+                run.tools_used,
+                run.steps_detail,
+                run.output,
+                run.session_id,
+                run.executed_at
+            ],
+        )
+        .map_err(|e| format!("Failed to record task run: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get_task_runs(&self, task_id: Option<&str>, limit: usize) -> Result<Vec<DbScheduledTaskRun>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let limit_val = limit.clamp(1, 200);
+
+        if let Some(tid) = task_id {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, task_id, task_name, action_type, delivery_channel, status, steps_count, tools_used, steps_detail, output, session_id, executed_at
+                     FROM scheduled_task_runs
+                     WHERE task_id = ?1
+                     ORDER BY executed_at DESC
+                     LIMIT ?2",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let rows = stmt
+                .query_map(params![tid, limit_val], |row| {
+                    Ok(DbScheduledTaskRun {
+                        id: row.get(0)?,
+                        task_id: row.get(1)?,
+                        task_name: row.get(2)?,
+                        action_type: row.get(3)?,
+                        delivery_channel: row.get(4)?,
+                        status: row.get(5)?,
+                        steps_count: row.get::<_, i64>(6)? as u32,
+                        tools_used: row.get(7)?,
+                        steps_detail: row.get(8)?,
+                        output: row.get(9)?,
+                        session_id: row.get(10)?,
+                        executed_at: row.get(11)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            let mut list = Vec::new();
+            for r in rows {
+                list.push(r.map_err(|e| e.to_string())?);
+            }
+            Ok(list)
+        } else {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, task_id, task_name, action_type, delivery_channel, status, steps_count, tools_used, steps_detail, output, session_id, executed_at
+                     FROM scheduled_task_runs
+                     ORDER BY executed_at DESC
+                     LIMIT ?1",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let rows = stmt
+                .query_map(params![limit_val], |row| {
+                    Ok(DbScheduledTaskRun {
+                        id: row.get(0)?,
+                        task_id: row.get(1)?,
+                        task_name: row.get(2)?,
+                        action_type: row.get(3)?,
+                        delivery_channel: row.get(4)?,
+                        status: row.get(5)?,
+                        steps_count: row.get::<_, i64>(6)? as u32,
+                        tools_used: row.get(7)?,
+                        steps_detail: row.get(8)?,
+                        output: row.get(9)?,
+                        session_id: row.get(10)?,
+                        executed_at: row.get(11)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            let mut list = Vec::new();
+            for r in rows {
+                list.push(r.map_err(|e| e.to_string())?);
+            }
+            Ok(list)
+        }
     }
 }
 

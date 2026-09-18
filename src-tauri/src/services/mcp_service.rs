@@ -664,6 +664,28 @@ impl McpManager {
         f7.insert("args".to_string(), "Arguments".to_string());
         f7.insert("timeout_ms".to_string(), "Timeout (ms)".to_string());
 
+        let mut f_search = std::collections::HashMap::new();
+        f_search.insert("query".to_string(), "Search Query".to_string());
+        f_search.insert("max_results".to_string(), "Max Results".to_string());
+
+        let mut f_fetch = std::collections::HashMap::new();
+        f_fetch.insert("url".to_string(), "Webpage URL".to_string());
+        f_fetch.insert("max_characters".to_string(), "Max Characters".to_string());
+
+        let mut f_sp_write = std::collections::HashMap::new();
+        f_sp_write.insert("key".to_string(), "Note Key".to_string());
+        f_sp_write.insert("content".to_string(), "Note Content".to_string());
+
+        let mut f_sp_read = std::collections::HashMap::new();
+        f_sp_read.insert("key".to_string(), "Note Key".to_string());
+
+        let mut f_sched = std::collections::HashMap::new();
+        f_sched.insert("name".to_string(), "Routine Name".to_string());
+        f_sched.insert("cron_expr".to_string(), "Cron / Schedule".to_string());
+        f_sched.insert("action_type".to_string(), "Action Type".to_string());
+        f_sched.insert("prompt".to_string(), "Prompt / Goal".to_string());
+        f_sched.insert("description".to_string(), "Description".to_string());
+
         vec![
             McpToolWithServer {
                 server_id: "atena_native".to_string(),
@@ -917,6 +939,241 @@ impl McpManager {
                 },
                 enabled: true,
                 permission_mode: "ask".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Web & Search)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_web_search".to_string(),
+                    description: Some("Searches the public web to obtain up-to-date information, news, reference URLs, and facts with zero API keys.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search terms or keywords to look up on the web"
+                            },
+                            "max_results": {
+                                "type": "integer",
+                                "description": "Maximum number of search results to return (default: 5, max: 10)"
+                            }
+                        },
+                        "required": ["query"]
+                    }),
+                    label: Some("Web Search".to_string()),
+                    field_labels: f_search,
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Web & Search)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_fetch_webpage".to_string(),
+                    description: Some("Fetches and parses a web page URL into clean, readable Markdown without ads, scripts, or navigation bloat.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "HTTP or HTTPS URL of the webpage to fetch"
+                            },
+                            "max_characters": {
+                                "type": "integer",
+                                "description": "Maximum character limit for output text (default: 8000)"
+                            }
+                        },
+                        "required": ["url"]
+                    }),
+                    label: Some("Read Webpage".to_string()),
+                    field_labels: f_fetch,
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Task Scratchpad)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_scratchpad_write".to_string(),
+                    description: Some("Writes or updates temporary task notes, execution logs, or scratch calculations. Ephemeral and kept out of the permanent associative graph.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "key": {
+                                "type": "string",
+                                "description": "Identifier key for the scratchpad note (e.g. 'plan', 'test_error', 'checklist')"
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "Content of the scratchpad note"
+                            }
+                        },
+                        "required": ["key", "content"]
+                    }),
+                    label: Some("Write Scratchpad".to_string()),
+                    field_labels: f_sp_write,
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Task Scratchpad)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_scratchpad_read".to_string(),
+                    description: Some("Reads temporary task notes from the session scratchpad.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "key": {
+                                "type": "string",
+                                "description": "Specific note key to retrieve (optional: if omitted, returns all notes)"
+                            }
+                        }
+                    }),
+                    label: Some("Read Scratchpad".to_string()),
+                    field_labels: f_sp_read,
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Task Scratchpad)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_scratchpad_clear".to_string(),
+                    description: Some("Clears the temporary session scratchpad upon completing a task.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {}
+                    }),
+                    label: Some("Clear Scratchpad".to_string()),
+                    field_labels: std::collections::HashMap::new(),
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Automation & Scheduler)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_schedule_task".to_string(),
+                    description: Some("Creates a proactive scheduled task or background routine in Atena (e.g. daily briefing, health check, memory sleep). Zero-overhead when idle.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Concise title for the scheduled routine (e.g. 'Daily Morning Briefing', 'Nightly Memory Sleep')"
+                            },
+                            "cron_expr": {
+                                "type": "string",
+                                "description": "Cron expression or interval: e.g. '@daily', '@hourly', '@every 30m', '0 9 * * *' (9 AM daily)"
+                            },
+                            "action_type": {
+                                "type": "string",
+                                "enum": ["autonomous_prompt", "memory_sleep", "skill"],
+                                "description": "Type of action to execute: 'autonomous_prompt' for AI synthesis, 'memory_sleep' for associative graph optimization, 'skill' for procedural skill"
+                            },
+                            "prompt": {
+                                "type": "string",
+                                "description": "Prompt / goal to execute when action_type is 'autonomous_prompt'"
+                            },
+                            "skill_slug": {
+                                "type": "string",
+                                "description": "Optional slug or identifier of the procedural skill when action_type is 'skill' (e.g. 'tech-news-rss')"
+                            },
+                            "script_file": {
+                                "type": "string",
+                                "description": "Optional script file inside the skill to execute (e.g. 'fetch_tech_news.py')"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Optional description of what the routine accomplishes"
+                            },
+                            "run_immediately": {
+                                "type": "boolean",
+                                "description": "Optional: If true, immediately triggers and executes the newly scheduled routine once for testing after creation"
+                            },
+                            "delivery_channel": {
+                                "type": "string",
+                                "enum": ["chat", "telegram", "both", "silent"],
+                                "description": "Where to deliver routine results: 'chat' creates a dedicated conversation session in the sidebar, 'telegram' sends a message directly to Telegram, 'both' delivers to both, 'silent' logs in background without generating a chat"
+                            },
+                            "delivery_target": {
+                                "type": "string",
+                                "description": "Optional Telegram chat ID or target user identifier when delivery_channel is 'telegram' or 'both'"
+                            }
+                        },
+                        "required": ["name", "cron_expr", "action_type"]
+                    }),
+                    label: Some("Schedule Routine".to_string()),
+                    field_labels: f_sched,
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Automation & Scheduler)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_list_scheduled_tasks".to_string(),
+                    description: Some("Lists all proactive scheduled tasks and routines currently configured in Atena.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {}
+                    }),
+                    label: Some("List Scheduled Routines".to_string()),
+                    field_labels: std::collections::HashMap::new(),
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Automation & Scheduler)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_cancel_scheduled_task".to_string(),
+                    description: Some("Cancels and removes a scheduled routine by its name or ID.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "identifier": {
+                                "type": "string",
+                                "description": "Task ID (e.g. 'task-171234') or exact/partial name of the routine to cancel"
+                            }
+                        },
+                        "required": ["identifier"]
+                    }),
+                    label: Some("Cancel Scheduled Routine".to_string()),
+                    field_labels: std::collections::HashMap::new(),
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
+            },
+            McpToolWithServer {
+                server_id: "atena_native".to_string(),
+                server_name: "Atena Core (Automation & Scheduler)".to_string(),
+                tool: McpToolDefinition {
+                    name: "atena_run_scheduled_task".to_string(),
+                    description: Some("Immediately triggers and executes a scheduled task or routine on-demand for testing or immediate execution.".to_string()),
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": {
+                            "identifier": {
+                                "type": "string",
+                                "description": "Task ID (e.g. 'task-171234') or exact/partial name of the routine to execute right now"
+                            }
+                        },
+                        "required": ["identifier"]
+                    }),
+                    label: Some("Run Scheduled Routine Now".to_string()),
+                    field_labels: std::collections::HashMap::new(),
+                },
+                enabled: true,
+                permission_mode: "auto".to_string(),
             },
         ]
     }
