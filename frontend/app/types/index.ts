@@ -218,6 +218,7 @@ export interface SkillItem {
   scripts?: string[]
   env_vars?: Record<string, string> | null
   permission_mode?: string
+  enabled?: boolean
   [key: string]: any
 }
 

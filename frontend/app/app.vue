@@ -1940,6 +1940,7 @@ const executeTool = async (toolCall: any, assistantMsg: any, force = false) => {
         try {
           const allSkills = await invoke<any[]>('skills_get_all')
           const matchedSkill = allSkills?.find((s: any) => {
+            if (s.enabled === false) return false
             const sName = (s.name || '').toLowerCase().replace(/[_-]/g, ' ')
             const tName = (targetTool.name || '').toLowerCase().replace(/[_-]/g, ' ')
             return s.name === targetTool.name || s.id === targetTool.name || sName === tName
@@ -2035,6 +2036,7 @@ const processAutoTools = async (assistantMsg: any) => {
         const script = (rawArgs.script_file || rawArgs.script || rawArgs.script_name || rawArgs.file_name || '').trim().toLowerCase()
 
         const matchedSkill = allSkills.find((s: any) => {
+          if (s.enabled === false) return false
           const sId = (s.id || '').toLowerCase()
           const sName = (s.name || '').toLowerCase()
           const cleanSId = sId.replace(/^skill-/, '')
@@ -2242,9 +2244,11 @@ const handleApproveTool = async ({
       const skills = await invoke<any[]>('skills_get_all')
       const targetCmd = (rawArgs.command || rawArgs.cmd || '').trim()
       const matchedSkill = skills.find((s: any) =>
-        (rawArgs.skill_id && s.id === rawArgs.skill_id) ||
-        (rawArgs.skill_name && s.name.toLowerCase() === rawArgs.skill_name.toLowerCase()) ||
-        (targetCmd && s.steps?.some((st: any) => st.command && st.command.trim() === targetCmd))
+        s.enabled !== false && (
+          (rawArgs.skill_id && s.id === rawArgs.skill_id) ||
+          (rawArgs.skill_name && s.name.toLowerCase() === rawArgs.skill_name.toLowerCase()) ||
+          (targetCmd && s.steps?.some((st: any) => st.command && st.command.trim() === targetCmd))
+        )
       )
       if (matchedSkill) {
         await invoke('skills_set_permission_mode', {

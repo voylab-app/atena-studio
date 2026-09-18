@@ -500,6 +500,7 @@ mod tests {
             Some("Upgraded to v2".to_string()),
             None,
             Some("auto".to_string()),
+            None,
         ).expect("Skill update should succeed");
 
         assert_eq!(updated.version, 2);
@@ -513,5 +514,49 @@ mod tests {
             let path = std::path::PathBuf::from(folder);
             let _ = std::fs::remove_dir_all(path);
         }
+    }
+
+    #[test]
+    fn test_skill_enable_disable_toggle_and_filtering() {
+        use crate::services::memory_engine::MemoryGraphEngine;
+        use crate::core::memory::SkillStep;
+
+        let skill = MemoryGraphEngine::learn_or_refine_skill_advanced(
+            None,
+            "Toggleable Test Skill",
+            "Description for toggle test",
+            vec!["toggle_trigger_xyz".to_string()],
+            vec![SkillStep {
+                order: 1,
+                instruction: "Do toggle action".to_string(),
+                tool_name: None,
+                command: Some("echo toggle".to_string()),
+                script_file: None,
+                cwd: None,
+                timeout_ms: None,
+            }],
+            None,
+            None,
+            Some("ask".to_string()),
+            Some(true),
+        );
+
+        assert!(skill.enabled, "Newly created skill should be enabled");
+
+        // Should be found by trigger when enabled
+        let matches = MemoryGraphEngine::find_matching_skills("toggle_trigger_xyz");
+        assert!(matches.iter().any(|s| s.id == skill.id));
+
+        // Disable skill
+        let toggled = MemoryGraphEngine::set_skill_enabled(&skill.id, false)
+            .expect("Disabling skill should succeed");
+        assert!(!toggled.enabled, "Skill should be marked disabled");
+
+        // Should NOT be matched when disabled
+        let matches_after = MemoryGraphEngine::find_matching_skills("toggle_trigger_xyz");
+        assert!(!matches_after.iter().any(|s| s.id == skill.id));
+
+        // Clean up
+        let _ = MemoryGraphEngine::delete_skill(&skill.id);
     }
 }

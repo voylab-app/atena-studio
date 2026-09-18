@@ -1705,6 +1705,9 @@ impl BackendManager {
                 .and_then(|v| v.as_str());
 
             if let Some(matched) = skills.iter().find(|s| {
+                if !s.enabled {
+                    return false;
+                }
                 if let Some(slug) = slug_opt {
                     let clean_s_id = s.id.trim_start_matches("skill-");
                     let clean_slug = slug.trim_start_matches("skill-");
@@ -1741,9 +1744,10 @@ impl BackendManager {
             let skills = crate::services::memory_engine::MemoryGraphEngine::load_skills();
             let norm_name = name.to_lowercase().replace(['_', '-'], " ");
             if let Some(matched_skill) = skills.iter().find(|s| {
-                s.name.eq_ignore_ascii_case(name)
-                    || s.id.eq_ignore_ascii_case(name)
-                    || s.name.to_lowercase().replace(['_', '-'], " ") == norm_name
+                s.enabled
+                    && (s.name.eq_ignore_ascii_case(name)
+                        || s.id.eq_ignore_ascii_case(name)
+                        || s.name.to_lowercase().replace(['_', '-'], " ") == norm_name)
             }) {
                 if let Some(cmd) = matched_skill.steps.iter().find_map(|st| st.effective_command()) {
                     tc.name = "run_command".to_string();

@@ -100,6 +100,16 @@ To protect system and user data, the execution engine enforces strict safety gua
 2. **Execute:** Upon receiving a prompt with matching keywords (triggers), Atena loads the steps, folder scripts, and execution recipes.
 3. **Refine & Edit:** When the user asks to modify, enhance, or correct an existing skill, the AI invokes `update_procedural_skill` (or `skills_update_with_scripts`), which **increments the skill version** (e.g., `v1` ➔ `v2`), updates steps, commands, triggers, or script files, and logs refinement notes.
 
+### 🎛️ 3.6 Skill Lifecycle: Activation / Deactivation & Deletion Safeguards
+1. **Individual Skill Activation Toggle (`enabled: bool`):**
+   - Each procedural skill contains an `enabled` state (default `true`).
+   - In the Memory UI, users can toggle individual skills between **Active** and **Disabled** directly from the card badge or within the skill refinement modal.
+   - Disabled skills are excluded during trigger matching (`find_matching_skills`), ensuring they are never injected into the LLM system prompt context and will not be triggered automatically.
+   - The status is persisted directly in `skill.json` and documented in `SKILL.md`.
+2. **Safe Deletion with Confirmation Modal:**
+   - Skill deletion permanently removes the skill directory and all script assets from `~/.atena/skills/<skill-slug>/`.
+   - To avoid accidental loss of refined procedures, deleting a skill opens a dedicated confirmation dialog displaying the skill title, version, and folder location before any filesystem operation takes place.
+
 ---
 
 ## ⚡ 4. Real-Time Integrated Workflow (Step-by-Step)
