@@ -187,7 +187,8 @@
             >
               <HelpCircle class="w-3.5 h-3.5" />
               <span>{{ $t('settings.gateways.how_to_get_token') }}</span>
-              <component :is="showTelegramTutorial ? ChevronUp : ChevronDown" class="w-3 h-3" />
+              <ChevronUp v-if="showTelegramTutorial" class="w-3 h-3" />
+              <ChevronDown v-else class="w-3 h-3" />
             </button>
           </div>
 
@@ -386,7 +387,8 @@
             >
               <HelpCircle class="w-3.5 h-3.5" />
               <span>{{ $t('settings.gateways.how_to_get_token') }}</span>
-              <component :is="showDiscordTutorial ? ChevronUp : ChevronDown" class="w-3 h-3" />
+              <ChevronUp v-if="showDiscordTutorial" class="w-3 h-3" />
+              <ChevronDown v-else class="w-3 h-3" />
             </button>
           </div>
 
