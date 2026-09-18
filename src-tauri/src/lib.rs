@@ -1,9 +1,10 @@
 pub mod core;
 pub mod services;
 pub mod server;
+pub mod tray;
 
 use serde::{Deserialize, Serialize};
-use tauri::{command, ipc::Channel, Manager, State};
+use tauri::{command, ipc::Channel, AppHandle, Manager, State};
 use tokio::sync::Mutex;
 use std::collections::HashMap;
 use std::io::Write;
@@ -38,6 +39,7 @@ pub struct AppState {
     pub active_model: Mutex<Option<ModelInfo>>,
     pub memory_engine: Mutex<MemoryGraphEngine>,
     pub db: Arc<crate::services::db::DatabaseService>,
+    pub gateways_manager: Arc<crate::services::gateways::GatewaysManager>,
 }
 
 impl AppState {
@@ -61,6 +63,7 @@ impl AppState {
             active_model: Mutex::new(None),
             memory_engine: Mutex::new(initial_memory_engine),
             db,
+            gateways_manager: Arc::new(crate::services::gateways::GatewaysManager::new()),
         }
     }
 }
@@ -611,29 +614,74 @@ fn get_app_config() -> Result<crate::core::config::AppConfig, String> {
 }
 
 #[command]
-fn save_app_config(config: serde_json::Value) -> Result<(), String> {
+async fn save_app_config(
+    config: serde_json::Value,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let mut current = crate::core::config::AppConfig::load();
-    if let Ok(parsed) = serde_json::from_value::<crate::core::config::AppConfig>(config.clone()) {
-        return parsed.save();
-    }
-    if let Some(cp) = config.get("cloud_providers") {
-        if let Ok(parsed_cp) = serde_json::from_value::<crate::core::config::CloudProvidersConfig>(cp.clone()) {
-            current.cloud_providers = parsed_cp;
+    let saved_cfg = if let Ok(parsed) = serde_json::from_value::<crate::core::config::AppConfig>(config.clone()) {
+        parsed.save()?;
+        parsed
+    } else {
+        if let Some(cp) = config.get("cloud_providers") {
+            if let Ok(parsed_cp) = serde_json::from_value::<crate::core::config::CloudProvidersConfig>(cp.clone()) {
+                current.cloud_providers = parsed_cp;
+            }
         }
-    }
-    if let Some(mem) = config.get("enable_cognitive_memory").and_then(|v| v.as_bool()) {
-        current.enable_cognitive_memory = mem;
-    }
-    if let Some(mem) = config.get("enable_facts_memory").and_then(|v| v.as_bool()) {
-        current.enable_facts_memory = mem;
-    }
-    if let Some(mem) = config.get("enable_skills_memory").and_then(|v| v.as_bool()) {
-        current.enable_skills_memory = mem;
-    }
-    if let Some(mem) = config.get("enable_episodic_memory").and_then(|v| v.as_bool()) {
-        current.enable_episodic_memory = mem;
-    }
-    current.save()
+        if let Some(mem) = config.get("enable_cognitive_memory").and_then(|v| v.as_bool()) {
+            current.enable_cognitive_memory = mem;
+        }
+        if let Some(mem) = config.get("enable_facts_memory").and_then(|v| v.as_bool()) {
+            current.enable_facts_memory = mem;
+        }
+        if let Some(mem) = config.get("enable_skills_memory").and_then(|v| v.as_bool()) {
+            current.enable_skills_memory = mem;
+        }
+        if let Some(mem) = config.get("enable_episodic_memory").and_then(|v| v.as_bool()) {
+            current.enable_episodic_memory = mem;
+        }
+        if let Some(gw) = config.get("gateways") {
+            if let Ok(parsed_gw) = serde_json::from_value::<crate::core::config::GatewaysConfig>(gw.clone()) {
+                current.gateways = parsed_gw;
+            }
+        }
+        if let Some(bg) = config.get("run_in_background").and_then(|v| v.as_bool()) {
+            current.run_in_background = bg;
+        }
+        if let Some(ct) = config.get("close_to_tray").and_then(|v| v.as_bool()) {
+            current.close_to_tray = ct;
+        }
+        current.save()?;
+        current
+    };
+
+    // Synchronize background gateway workers with updated configuration
+    state.gateways_manager.sync_with_config(app, &saved_cfg).await;
+    Ok(())
+}
+
+#[command]
+fn get_gateways_status(state: State<'_, AppState>) -> Result<Vec<crate::services::gateways::GatewayStatusReport>, String> {
+    let cfg = crate::core::config::AppConfig::load();
+    Ok(state.gateways_manager.get_status_reports(&cfg))
+}
+
+#[command]
+async fn test_telegram_connection(token: String) -> Result<String, String> {
+    crate::services::gateways::GatewaysManager::test_telegram_token(&token).await
+}
+
+#[command]
+async fn test_discord_connection(token: String) -> Result<String, String> {
+    crate::services::gateways::GatewaysManager::test_discord_token(&token).await
+}
+
+#[command]
+async fn restart_gateways(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let cfg = crate::core::config::AppConfig::load();
+    state.gateways_manager.sync_with_config(app, &cfg).await;
+    Ok(())
 }
 
 #[command]
@@ -957,30 +1005,37 @@ If you notice outdated, conflicting, or corrected records in [LATEST RECORDS IN 
         }
     }
 
-    let final_messages = if let Some(msgs) = messages {
-        if msgs.is_empty() {
-            if let Some(user_msg) = user_message {
-                vec![ChatMessage {
-                    role: "user".to_string(),
-                    content: user_msg,
-                    images: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                }]
-            } else {
-                Vec::new()
+    let final_messages = if let Some(mut msgs) = messages {
+        if let Some(user_msg) = user_message {
+            if !user_msg.trim().is_empty() {
+                let already_present = msgs
+                    .last()
+                    .map(|m| m.role == "user" && m.content.trim() == user_msg.trim())
+                    .unwrap_or(false);
+                if !already_present {
+                    msgs.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: user_msg,
+                        images: None,
+                        tool_calls: None,
+                        tool_call_id: None,
+                    });
+                }
             }
-        } else {
-            msgs
         }
+        msgs
     } else if let Some(user_msg) = user_message {
-        vec![ChatMessage {
-            role: "user".to_string(),
-            content: user_msg,
-            images: None,
-            tool_calls: None,
-            tool_call_id: None,
-        }]
+        if !user_msg.trim().is_empty() {
+            vec![ChatMessage {
+                role: "user".to_string(),
+                content: user_msg,
+                images: None,
+                tool_calls: None,
+                tool_call_id: None,
+            }]
+        } else {
+            Vec::new()
+        }
     } else {
         Vec::new()
     };
@@ -2060,8 +2115,27 @@ async fn call_mcp_tool(
     arguments: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    if server_id == "atena_native" || server_id == "atena" {
-        match tool_name.as_str() {
+    execute_tool_call_internal(state.inner(), &server_id, &tool_name, arguments).await
+}
+
+pub async fn execute_tool_call_internal(
+    state: &AppState,
+    server_id: &str,
+    tool_name: &str,
+    arguments: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let effective_server = if server_id.is_empty() {
+        if tool_name.starts_with("atena_") {
+            "atena_native"
+        } else {
+            "skills"
+        }
+    } else {
+        server_id
+    };
+
+    if effective_server == "atena_native" || effective_server == "atena" {
+        match tool_name {
             "atena_search_episodes" => {
                 let query = arguments.get("query").and_then(|v| v.as_str()).unwrap_or_default();
                 let limit = arguments.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
@@ -2088,8 +2162,8 @@ async fn call_mcp_tool(
             _ => return Err(format!("Ferramenta nativa '{}' desconhecida.", tool_name)),
         }
     }
-    if server_id == "skills" {
-        match tool_name.as_str() {
+    if effective_server == "skills" || tool_name == "run_command" || tool_name == "run_skill_command" || tool_name == "run_skill_script" || tool_name == "create_procedural_skill" || tool_name == "update_procedural_skill" || tool_name == "edit_procedural_skill" {
+        match tool_name {
             "create_procedural_skill" => {
                 let name = arguments.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
                 let description = arguments.get("description").and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -2159,7 +2233,7 @@ async fn call_mcp_tool(
             _ => return Err(format!("Ferramenta de procedural skill '{}' desconhecida.", tool_name)),
         }
     }
-    state.mcp_manager.call_tool(&server_id, &tool_name, arguments).await
+    state.mcp_manager.call_tool(effective_server, tool_name, arguments).await
 }
 
 #[command]
@@ -3553,8 +3627,25 @@ pub fn run() {
             save_plugin_settings,
             get_plugin_settings,
             run_plugin_native,
-            read_plugin_script
+            read_plugin_script,
+            get_gateways_status,
+            test_telegram_connection,
+            test_discord_connection,
+            restart_gateways
         ])
+        .setup(|app| {
+            let handle = app.handle().clone();
+            if let Err(e) = tray::setup_tray(&handle) {
+                log::warn!("Failed to initialize system tray: {}", e);
+            }
+            let state = app.state::<AppState>();
+            let gateways = state.gateways_manager.clone();
+            let cfg = crate::core::config::AppConfig::load();
+            tauri::async_runtime::spawn(async move {
+                gateways.sync_with_config(handle, &cfg).await;
+            });
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -3563,6 +3654,7 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
                 let _ = app_handle.save_window_state(StateFlags::all());
                 let state = app_handle.state::<AppState>();
+                state.gateways_manager.stop_all();
                 state.backend_manager.stop_all_sync();
                 if let Ok(engine) = state.memory_engine.try_lock() {
                     if engine.node_count() > 0 {
@@ -3571,16 +3663,25 @@ pub fn run() {
                 };
             }
             tauri::RunEvent::WindowEvent {
-                event: tauri::WindowEvent::CloseRequested { .. },
+                label,
+                event: tauri::WindowEvent::CloseRequested { api, .. },
                 ..
             } => {
-                let _ = app_handle.save_window_state(StateFlags::all());
-                let state = app_handle.state::<AppState>();
-                if let Ok(engine) = state.memory_engine.try_lock() {
-                    if engine.node_count() > 0 {
-                        let _ = engine.auto_persist_default();
+                let cfg = crate::core::config::AppConfig::load();
+                if cfg.close_to_tray {
+                    api.prevent_close();
+                    if let Some(window) = app_handle.get_webview_window(&label) {
+                        let _ = window.hide();
                     }
-                };
+                } else {
+                    let _ = app_handle.save_window_state(StateFlags::all());
+                    let state = app_handle.state::<AppState>();
+                    if let Ok(engine) = state.memory_engine.try_lock() {
+                        if engine.node_count() > 0 {
+                            let _ = engine.auto_persist_default();
+                        }
+                    };
+                }
             }
             tauri::RunEvent::WindowEvent {
                 event: tauri::WindowEvent::Destroyed,

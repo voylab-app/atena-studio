@@ -9,4 +9,5 @@ pub mod server_ctl;
 pub mod plugins;
 pub mod skill_runner;
 pub mod db;
+pub mod gateways;
 

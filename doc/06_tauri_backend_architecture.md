@@ -122,5 +122,8 @@ Atena Studio provides first-class containerization support for cloud, home serve
   * `ATENA_TOKEN`: Optional authentication token.
   * `ATENA_STATIC_DIR`: Directory serving pre-rendered Nuxt SPA files (default `/app/public`).
 
+---
 
+## 7. System Tray & Remote Messaging Gateways
 
+For detailed information on the native background daemon, system tray menu, and external bot gateways (Telegram & Discord), consult [`doc/11_remote_gateways_and_tray.md`](./11_remote_gateways_and_tray.md).

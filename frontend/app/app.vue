@@ -2601,9 +2601,21 @@ const fetchGlobalDownloads = async () => {
   }
 }
 
+let unlistenSessionsUpdated: (() => void) | null = null
+
 onMounted(async () => {
   await loadSessions()
   await initPersonas()
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', loadSessions)
+  }
+  try {
+    const { listen } = await import('@tauri-apps/api/event')
+    unlistenSessionsUpdated = await listen('db_sessions_updated', () => {
+      loadSessions()
+    })
+  } catch (_) {}
 
   // Load native app configuration if available
   try {
@@ -2946,9 +2958,13 @@ onUnmounted(() => {
     } catch (_) {}
   }
   if (typeof window !== 'undefined') {
+    window.removeEventListener('focus', loadSessions)
     window.removeEventListener('keydown', handleGlobalKeydown)
     window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('click', handleGlobalClick, true)
+  }
+  if (unlistenSessionsUpdated) {
+    unlistenSessionsUpdated()
   }
 })
 
