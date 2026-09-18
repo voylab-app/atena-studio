@@ -2140,6 +2140,91 @@ impl BackendManager {
             }
         }
 
+        // 5. Check for <invoke name="...">...</invoke> tags (emitted by Anthropic, Qwen, or custom tool models)
+        let mut invoke_search_idx = 0;
+        while let Some(rel_start) = cleaned_content[invoke_search_idx..].find("<invoke") {
+            let start_tag = invoke_search_idx + rel_start;
+            if let Some(rel_end) = cleaned_content[start_tag..].find("</invoke>") {
+                let actual_end = start_tag + rel_end + "</invoke>".len();
+                let full_block = &cleaned_content[start_tag..actual_end];
+
+                let mut tool_name = String::new();
+                if let Some(open_end) = full_block.find('>') {
+                    let open_tag = &full_block[..open_end];
+                    if let Some(name_idx) = open_tag.find("name=") {
+                        let after_name = &open_tag[name_idx + 5..];
+                        let quote = after_name.chars().next().unwrap_or('"');
+                        if quote == '"' || quote == '\'' {
+                            let after_quote = &after_name[1..];
+                            if let Some(close_quote) = after_quote.find(quote) {
+                                tool_name = after_quote[..close_quote].trim().to_string();
+                            }
+                        } else {
+                            let unquoted = after_name.split_whitespace().next().unwrap_or("").trim_end_matches('>');
+                            tool_name = unquoted.to_string();
+                        }
+                    }
+                }
+
+                let mut arguments = serde_json::Map::new();
+                let mut param_search = &full_block[..];
+                while let Some(p_start) = param_search.find("<parameter") {
+                    if let Some(p_close) = param_search[p_start..].find("</parameter>") {
+                        let p_end = p_start + p_close + "</parameter>".len();
+                        let p_block = &param_search[p_start..p_end];
+                        if let Some(tag_close) = p_block.find('>') {
+                            let p_tag = &p_block[..tag_close];
+                            let p_inner = &p_block[tag_close + 1..p_close];
+                            if let Some(name_idx) = p_tag.find("name=") {
+                                let after_name = &p_tag[name_idx + 5..];
+                                let quote = after_name.chars().next().unwrap_or('"');
+                                let param_name = if quote == '"' || quote == '\'' {
+                                    let after_quote = &after_name[1..];
+                                    if let Some(close_quote) = after_quote.find(quote) {
+                                        after_quote[..close_quote].trim().to_string()
+                                    } else {
+                                        String::new()
+                                    }
+                                } else {
+                                    after_name.split_whitespace().next().unwrap_or("").trim_end_matches('>').to_string()
+                                };
+
+                                if !param_name.is_empty() {
+                                    let val_trimmed = p_inner.trim();
+                                    let val = if let Ok(num) = val_trimmed.parse::<i64>() {
+                                        serde_json::json!(num)
+                                    } else if let Ok(f) = val_trimmed.parse::<f64>() {
+                                        serde_json::json!(f)
+                                    } else if val_trimmed.eq_ignore_ascii_case("true") {
+                                        serde_json::json!(true)
+                                    } else if val_trimmed.eq_ignore_ascii_case("false") {
+                                        serde_json::json!(false)
+                                    } else {
+                                        serde_json::json!(val_trimmed)
+                                    };
+                                    arguments.insert(param_name, val);
+                                }
+                            }
+                        }
+                        param_search = &param_search[p_end..];
+                    } else {
+                        break;
+                    }
+                }
+
+                if !tool_name.is_empty() {
+                    let tc = Self::resolve_tool_call(&tool_name, serde_json::Value::Object(arguments), "pending_approval", available_tools, calls.len());
+                    calls.push(tc);
+                }
+
+                cleaned_content.replace_range(start_tag..actual_end, "");
+                invoke_search_idx = start_tag;
+            } else {
+                cleaned_content.replace_range(start_tag.., "");
+                break;
+            }
+        }
+
         let final_clean = StreamingThinkingState::strip_special_channel_tokens(&cleaned_content).trim().to_string();
         let final_calls = if calls.is_empty() { None } else { Some(calls) };
         (final_clean, final_calls)

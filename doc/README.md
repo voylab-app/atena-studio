@@ -18,6 +18,7 @@ Welcome to the official documentation for **Atena Studio**, a high-performance l
 | [`08_plugin_system.md`](./08_plugin_system.md) | **Plugin & Extension System** | Modular plugin architecture, cognitive memory decoupling, chat loop hooks, and UI extensions. |
 | [`09_cloud_providers.md`](./09_cloud_providers.md) | **Cloud AI Providers** | Unified remote provider integration (Antigravity, OpenAI, OpenRouter, Ollama, Custom OpenAI) and SSE engine. |
 | [`10_internationalization_and_locales.md`](./10_internationalization_and_locales.md) | **Internationalization (i18n) & Locales** | Multi-language architecture (pt-BR, en, es), scalable `<select>` switcher, composables, and backend prompts. |
+| [`11_remote_gateways_and_tray.md`](./11_remote_gateways_and_tray.md) | **Remote Messaging Gateways & System Tray** | Native background execution, tray menu bar (macOS, Windows, Linux), and Telegram/Discord bots with cognitive memory. |
 
 ---
 

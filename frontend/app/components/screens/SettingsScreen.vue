@@ -762,6 +762,14 @@
           />
         </div>
 
+        <!-- CANAIS E MENSAGENS REMOTAS (TELEGRAM, DISCORD, TRAY) -->
+        <div v-else-if="currentSection === 'gateways'">
+          <GatewaysSettings
+            :config="config"
+            @save-config="saveSettings"
+          />
+        </div>
+
         <!-- 1.5 PLUGINS & EXTENSÕES -->
         <div v-else-if="currentSection === 'plugins'" class="space-y-5">
           <!-- Top Banner & Actions -->
@@ -2711,11 +2719,13 @@ import {
   Download,
   Upload,
   Archive,
-  Network
+  Network,
+  Radio
 } from 'lucide-vue-next'
 import RuntimeSetupModal from '../RuntimeSetupModal.vue'
 import EditMcpToolModal from '../EditMcpToolModal.vue'
 import CloudProvidersSettings from '../settings/CloudProvidersSettings.vue'
+import GatewaysSettings from '../settings/GatewaysSettings.vue'
 import { formatLiveDateTime, getTemporalContextPrompt, getDefaultTimezone } from '~/utils/dateContext'
 import { contractUserPath } from '~/utils/pathUtils'
 import { useAppLocale } from '../../composables/useLocale'
@@ -3106,6 +3116,7 @@ const menuItems = computed(() => {
   const base = [
     { id: 'general', label: t('settings.general'), icon: Settings, iconBg: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300' },
     { id: 'cloud_providers', label: t('settings.cloud_providers'), icon: Cloud, iconBg: 'bg-sky-100 text-sky-600 dark:bg-sky-600/30 dark:text-sky-300' },
+    { id: 'gateways', label: t('settings.gateways.nav_title'), icon: Radio, iconBg: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/30 dark:text-indigo-300' },
     { id: 'plugins', label: t('settings.plugins'), icon: Blocks, iconBg: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/30 dark:text-indigo-300' },
     { id: 'mcp', label: t('settings.mcp'), icon: Wrench, iconBg: 'bg-purple-100 text-purple-600 dark:bg-purple-600/30 dark:text-purple-300' },
     { id: 'servers', label: t('settings.servers'), icon: Zap, iconBg: 'bg-amber-100 text-amber-700 dark:bg-amber-600/30 dark:text-amber-300' },

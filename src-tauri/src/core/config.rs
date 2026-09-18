@@ -81,8 +81,91 @@ pub struct AppConfig {
     pub enable_skills_memory: bool,
     #[serde(default = "default_true")]
     pub enable_episodic_memory: bool,
+    #[serde(default = "default_true")]
+    pub run_in_background: bool,
+    #[serde(default = "default_true")]
+    pub close_to_tray: bool,
+    #[serde(default = "default_language")]
+    pub language: String,
+    #[serde(default)]
+    pub gateways: GatewaysConfig,
     #[serde(default)]
     pub cloud_providers: CloudProvidersConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct GatewaysConfig {
+    #[serde(default)]
+    pub telegram: TelegramConfig,
+    #[serde(default)]
+    pub discord: DiscordConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TelegramConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub bot_token: String,
+    #[serde(default)]
+    pub allowed_user_ids: Vec<i64>,
+    #[serde(default = "default_true")]
+    pub enable_memory: bool,
+    #[serde(default = "default_false")]
+    pub enable_tools: bool,
+    #[serde(default = "default_sliding_window")]
+    pub sliding_window: usize,
+    #[serde(default)]
+    pub custom_system_prompt: Option<String>,
+}
+
+impl Default for TelegramConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_token: String::new(),
+            allowed_user_ids: Vec::new(),
+            enable_memory: true,
+            enable_tools: false,
+            sliding_window: 4,
+            custom_system_prompt: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DiscordConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub bot_token: String,
+    #[serde(default)]
+    pub allowed_user_ids: Vec<String>,
+    #[serde(default)]
+    pub allowed_channel_ids: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enable_memory: bool,
+    #[serde(default = "default_false")]
+    pub enable_tools: bool,
+    #[serde(default = "default_sliding_window")]
+    pub sliding_window: usize,
+    #[serde(default)]
+    pub custom_system_prompt: Option<String>,
+}
+
+impl Default for DiscordConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_token: String::new(),
+            allowed_user_ids: Vec::new(),
+            allowed_channel_ids: Vec::new(),
+            enable_memory: true,
+            enable_tools: false,
+            sliding_window: 4,
+            custom_system_prompt: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -144,6 +227,14 @@ pub struct CloudProvidersConfig {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_sliding_window() -> usize {
+    4
+}
+
+fn default_language() -> String {
+    "pt-BR".into()
 }
 
 fn default_theme_mode() -> AppThemeMode {
@@ -348,6 +439,10 @@ impl Default for AppConfig {
             enable_facts_memory: true,
             enable_skills_memory: true,
             enable_episodic_memory: true,
+            run_in_background: true,
+            close_to_tray: true,
+            language: default_language(),
+            gateways: GatewaysConfig::default(),
             cloud_providers: CloudProvidersConfig::default(),
         }
     }
