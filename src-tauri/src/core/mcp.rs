@@ -8,6 +8,7 @@ pub enum McpTransportType {
     Stdio,
     Sse,
     Http,
+    Builtin,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

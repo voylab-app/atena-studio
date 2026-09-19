@@ -23,41 +23,341 @@ impl WebTools {
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(12))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        // 1. Primary engine: Bing search (fast, zero-API-key, rich organic results)
+        let normalized = Self::normalize_search_query(trimmed_query);
+
+        // 1. Primary engine: DuckDuckGo HTML (fast ~0.5s HTTP request)
+        if let Ok(ddg_results) = Self::search_duckduckgo_html(&client, trimmed_query, limit).await {
+            let filtered = Self::filter_irrelevant_results(trimmed_query, ddg_results);
+            if !filtered.is_empty() {
+                return Ok(filtered);
+            }
+        }
+
+        // 1b. Fallback engine: DuckDuckGo Lite (static HTML, no JS, resilient)
+        if let Ok(lite_results) = Self::search_duckduckgo_lite(&client, trimmed_query, limit).await {
+            let filtered = Self::filter_irrelevant_results(trimmed_query, lite_results);
+            if !filtered.is_empty() {
+                return Ok(filtered);
+            }
+        }
+
+        // 2. Secondary engine: Bing search with strict topical relevance filtering
         if let Ok(bing_results) = Self::search_bing(&client, trimmed_query, limit).await {
-            if !bing_results.is_empty() {
-                return Ok(bing_results);
+            let filtered = Self::filter_irrelevant_results(trimmed_query, bing_results);
+            if !filtered.is_empty() {
+                return Ok(filtered);
             }
         }
 
-        // 2. Secondary engine: DuckDuckGo HTML / Lite
-        if let Ok(ddg_results) = Self::search_duckduckgo(&client, trimmed_query, limit).await {
-            if !ddg_results.is_empty() {
-                return Ok(ddg_results);
+        if normalized != trimmed_query {
+            if let Ok(ddg_norm) = Self::search_duckduckgo_html(&client, &normalized, limit).await {
+                let filtered = Self::filter_irrelevant_results(&normalized, ddg_norm);
+                if !filtered.is_empty() {
+                    return Ok(filtered);
+                }
+            }
+            if let Ok(lite_norm) = Self::search_duckduckgo_lite(&client, &normalized, limit).await {
+                let filtered = Self::filter_irrelevant_results(&normalized, lite_norm);
+                if !filtered.is_empty() {
+                    return Ok(filtered);
+                }
+            }
+            if let Ok(bing_norm) = Self::search_bing(&client, &normalized, limit).await {
+                let filtered = Self::filter_irrelevant_results(&normalized, bing_norm);
+                if !filtered.is_empty() {
+                    return Ok(filtered);
+                }
             }
         }
 
-        // 3. Tertiary engine: DuckDuckGo Instant Answer API
-        if let Ok(ddg_api_results) = Self::search_duckduckgo_api(&client, trimmed_query, limit).await {
-            if !ddg_api_results.is_empty() {
-                return Ok(ddg_api_results);
+        // 3. Simplified topical query fallback for complex/long queries
+        let kws = Self::extract_topical_keywords(&normalized);
+        if kws.len() >= 3 {
+            let simplified = kws[..kws.len().min(4)].join(" ");
+            if simplified != normalized && simplified != trimmed_query {
+                if let Ok(sim_results) = Self::search_duckduckgo_html(&client, &simplified, limit).await {
+                    let filtered = Self::filter_irrelevant_results(&simplified, sim_results);
+                    if !filtered.is_empty() {
+                        return Ok(filtered);
+                    }
+                }
+                if let Ok(sim_lite) = Self::search_duckduckgo_lite(&client, &simplified, limit).await {
+                    let filtered = Self::filter_irrelevant_results(&simplified, sim_lite);
+                    if !filtered.is_empty() {
+                        return Ok(filtered);
+                    }
+                }
+                if let Ok(sim_bing) = Self::search_bing(&client, &simplified, limit).await {
+                    let filtered = Self::filter_irrelevant_results(&simplified, sim_bing);
+                    if !filtered.is_empty() {
+                        return Ok(filtered);
+                    }
+                }
+            }
+        }
+
+        // 4. Quaternary engine: DuckDuckGo Instant Answer API (only if asking for definitions/facts)
+        if Self::query_is_asking_for_definition(trimmed_query) {
+            if let Ok(ddg_api_results) = Self::search_duckduckgo_api(&client, trimmed_query, limit).await {
+                if !ddg_api_results.is_empty() {
+                    return Ok(ddg_api_results);
+                }
             }
         }
 
         Ok(Vec::new())
     }
 
-    /// Primary search implementation using Bing
+    /// Strips conversational leading prefixes that confuse search engine algorithms
+    pub fn normalize_search_query(query: &str) -> String {
+        let trimmed = query.trim();
+        let lower = trimmed.to_lowercase();
+        let prefixes = [
+            "what are the top ",
+            "what are the ",
+            "what is the ",
+            "tell me about the ",
+            "tell me about ",
+            "top recent ",
+            "top latest ",
+            "top ",
+            "latest news on ",
+            "latest news about ",
+            "latest ",
+            "search for ",
+            "look up ",
+            "principais ",
+            "quais as ",
+            "quais são as ",
+            "quais sao as ",
+            "quais os ",
+            "quais são os ",
+            "quais sao os ",
+            "qual a ",
+            "qual o ",
+            "me fale sobre as ",
+            "me fale sobre os ",
+            "me fale sobre ",
+            "me mostre as ",
+            "me mostre os ",
+            "me mostre ",
+            "me dê as ",
+            "me de as ",
+            "pesquise sobre ",
+            "pesquise por ",
+            "busque por ",
+            "buscar por ",
+            "buscar sobre ",
+        ];
+
+        for prefix in &prefixes {
+            if lower.starts_with(prefix) {
+                let remainder = trimmed[prefix.len()..].trim();
+                if !remainder.is_empty() {
+                    return remainder.to_string();
+                }
+            }
+        }
+
+        trimmed.to_string()
+    }
+
+    /// Checks if a query is explicitly looking for definitions or synonyms
+    pub fn query_is_asking_for_definition(query: &str) -> bool {
+        let lower = query.to_lowercase();
+        lower.contains("definition of")
+            || lower.contains("meaning of")
+            || lower.contains("what does")
+            || lower.contains("what is")
+            || lower.contains("definition")
+            || lower.contains("meaning")
+            || lower.contains("synonyms for")
+            || lower.contains("synonym")
+            || lower.contains("dictionary")
+            || lower.contains("significado")
+            || lower.contains("definição")
+            || lower.contains("definicao")
+            || lower.contains("sinônimo")
+            || lower.contains("sinonimo")
+            || lower.contains("dicionario")
+            || lower.contains("dicionário")
+            || lower.contains("o que significa")
+    }
+
+    /// Extracts core topical keywords from a query (removing stop words in EN and PT)
+    pub fn extract_topical_keywords(query: &str) -> Vec<String> {
+        let stop_words = [
+            // English stop words
+            "a", "an", "the", "and", "or", "in", "on", "at", "of", "for", "with", "by",
+            "about", "to", "from", "is", "are", "was", "were", "be", "been", "being",
+            "what", "which", "who", "when", "where", "why", "how", "top", "latest",
+            "newest", "new", "best", "most", "some", "all", "more", "date", "release",
+            "released", "launched", "2024", "2025", "2026", "2027", "tell", "show", "give",
+            // Portuguese stop words
+            "o", "os", "as", "um", "uma", "uns", "umas", "de", "da", "do", "das", "dos",
+            "em", "na", "no", "nas", "nos", "por", "para", "com", "sobre", "que", "qual",
+            "quais", "quem", "quando", "onde", "porque", "como", "mais", "menos",
+            "novos", "novas", "novo", "nova", "lançado", "lançados", "lancado", "lancados",
+            "dia", "hoje", "hj", "pra", "mim", "me", "recentemente", "recentes", "fale", "mostre",
+        ];
+
+        let lower = query.to_lowercase();
+        let tokens: Vec<&str> = lower
+            .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '.')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let mut keywords = Vec::new();
+        for token in tokens {
+            let clean = token.trim_matches(|c: char| !c.is_alphanumeric());
+            if clean.is_empty() {
+                continue;
+            }
+            let is_short_keyword = clean == "ia" || clean == "ai" || clean == "ui" || clean == "ux";
+            if (clean.len() >= 3 || is_short_keyword) && !stop_words.contains(&clean) {
+                keywords.push(clean.to_string());
+            }
+        }
+        keywords
+    }
+
+    /// Checks if a result title or snippet matches at least one topical keyword from the query
+    pub fn matches_topical_keywords(query_keywords: &[String], title: &str, snippet: &str, url: &str) -> bool {
+        if query_keywords.is_empty() {
+            return true;
+        }
+
+        let haystack = format!("{} {} {}", title, snippet, url).to_lowercase();
+        let tokens: Vec<&str> = haystack
+            .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '.')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        for kw in query_keywords {
+            if kw.len() <= 2 {
+                // Exact token match for 2-letter keywords like 'ia' or 'ai'
+                if tokens.iter().any(|&t| t == kw) {
+                    return true;
+                }
+            } else {
+                // Substring or token match for longer keywords
+                if haystack.contains(kw) || tokens.iter().any(|&t| t == kw || t.starts_with(kw) || kw.starts_with(t)) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Filters out dictionary websites and off-topic noise when the user query is looking for general news, articles or information
+    pub fn filter_irrelevant_results(query: &str, results: Vec<WebSearchResult>) -> Vec<WebSearchResult> {
+        let q_lower = query.to_lowercase();
+        let is_def_query = Self::query_is_asking_for_definition(query);
+
+        if is_def_query {
+            return results;
+        }
+
+        let topical_kws = Self::extract_topical_keywords(query);
+
+        let dictionary_hosts = [
+            "merriam-webster.com",
+            "dictionary.cambridge.org",
+            "thefreedictionary.com",
+            "wiktionary.org",
+            "dictionary.com",
+            "thesaurus.com",
+            "collinsdictionary.com",
+            "dicio.com.br",
+            "infopedia.pt",
+            "sinonimos.com.br",
+            "priberam.org",
+            "dicionarioinformal.com.br",
+            "diciteca.com",
+            "escreva.ai/palavra",
+        ];
+
+        let noisy_hosts = [
+            "webmotors.com.br",
+            "tripadvisor.com",
+            "dominos.co.in",
+            "dominos.com",
+            "pizzahut.com",
+            "godfathers.com",
+            "modeloinicial.com.br",
+            "modelos-de-curriculos.com",
+            "jusbrasil.com.br/modelos-pecas",
+            "mlb.com",
+            "espn.com",
+        ];
+
+        results
+            .into_iter()
+            .filter(|r| {
+                let url_lower = r.url.to_lowercase();
+                let title_lower = r.title.to_lowercase();
+                let snippet_lower = r.snippet.to_lowercase();
+
+                if !is_def_query {
+                    let is_dict_site = dictionary_hosts.iter().any(|host| url_lower.contains(host));
+                    let is_dict_title = title_lower.starts_with("synonyms for ")
+                        || title_lower.starts_with("definition of ")
+                        || title_lower.contains("dictionary online")
+                        || title_lower.starts_with("sinônimo de ")
+                        || title_lower.starts_with("significado de ")
+                        || title_lower.contains("dicionário online")
+                        || title_lower.contains("dicionario online");
+
+                    if is_dict_site || is_dict_title {
+                        return false;
+                    }
+                }
+
+                let is_noisy = noisy_hosts.iter().any(|host| url_lower.contains(host));
+                if is_noisy {
+                    return false;
+                }
+
+                if (title_lower.contains("pizza") || snippet_lower.contains("pizza places")) && !q_lower.contains("pizza") {
+                    return false;
+                }
+                if (title_lower.contains("carros novos") || title_lower.contains("comprar carro")) && !q_lower.contains("carro") && !q_lower.contains("car") {
+                    return false;
+                }
+                if (title_lower.contains("modelos de petições") || title_lower.contains("peças jurídicas")) && !q_lower.contains("petição") && !q_lower.contains("jurídic") {
+                    return false;
+                }
+
+                // Enforce topical keyword match: title or snippet must contain at least one query topic keyword
+                if !topical_kws.is_empty() && !Self::matches_topical_keywords(&topical_kws, &r.title, &r.snippet, &r.url) {
+                    return false;
+                }
+
+                true
+            })
+            .collect()
+    }
+
+    /// Primary search implementation using Bing with stealth browser client headers
     pub async fn search_bing(client: &reqwest::Client, query: &str, max_results: usize) -> Result<Vec<WebSearchResult>, String> {
-        let url = format!("https://www.bing.com/search?q={}", urlencoding(query));
+        let url = format!("https://www.bing.com/search?q={}&count=15", urlencoding(query));
         let resp = client
             .get(&url)
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-            .header("Accept-Language", "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+            .header("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+            .header("Sec-Ch-Ua", "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"")
+            .header("Sec-Ch-Ua-Mobile", "?0")
+            .header("Sec-Ch-Ua-Platform", "\"macOS\"")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Sec-Fetch-User", "?1")
+            .header("Upgrade-Insecure-Requests", "1")
             .send()
             .await
             .map_err(|e| format!("Bing search request failed: {}", e))?;
@@ -70,29 +370,59 @@ impl WebTools {
         Ok(Self::parse_bing_html(&html, max_results))
     }
 
-    /// Secondary search implementation using DuckDuckGo Lite & HTML
-    pub async fn search_duckduckgo(client: &reqwest::Client, query: &str, max_results: usize) -> Result<Vec<WebSearchResult>, String> {
-        let response = client
-            .post("https://lite.duckduckgo.com/lite/")
-            .form(&[("q", query)])
+    /// Primary search implementation using DuckDuckGo HTML endpoint
+    pub async fn search_duckduckgo_html(client: &reqwest::Client, query: &str, max_results: usize) -> Result<Vec<WebSearchResult>, String> {
+        let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding(query));
+        let resp = client
+            .get(&url)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7")
+            .header("Sec-Ch-Ua", "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"")
+            .header("Sec-Ch-Ua-Mobile", "?0")
+            .header("Sec-Ch-Ua-Platform", "\"macOS\"")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Upgrade-Insecure-Requests", "1")
             .send()
-            .await;
+            .await
+            .map_err(|e| format!("DuckDuckGo HTML search request failed: {}", e))?;
 
-        let html = match response {
-            Ok(resp) => {
-                if !resp.status().is_success() {
-                    Self::fallback_search_html(client, query).await?
-                } else {
-                    resp.text().await.unwrap_or_default()
-                }
-            }
-            Err(_) => Self::fallback_search_html(client, query).await?,
-        };
+        if !resp.status().is_success() {
+            return Ok(Vec::new());
+        }
+
+        let html = resp.text().await.unwrap_or_default();
+        if html.contains("anomaly-modal") || html.contains("anomaly.js") {
+            log::warn!("DuckDuckGo HTML returned bot challenge (anomaly.js)");
+            return Ok(Vec::new());
+        }
 
         let mut results = Self::parse_duckduckgo_html(&html, max_results);
         if results.is_empty() {
             results = Self::parse_duckduckgo_lite(&html, max_results);
         }
+        Ok(results)
+    }
+
+    /// Fallback search using DuckDuckGo Lite endpoint (pure HTML, zero-JS)
+    pub async fn search_duckduckgo_lite(client: &reqwest::Client, query: &str, max_results: usize) -> Result<Vec<WebSearchResult>, String> {
+        let url = format!("https://lite.duckduckgo.com/lite/?q={}", urlencoding(query));
+        let resp = client
+            .get(&url)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7")
+            .header("Cache-Control", "no-cache")
+            .send()
+            .await
+            .map_err(|e| format!("DuckDuckGo Lite search request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Ok(Vec::new());
+        }
+
+        let html = resp.text().await.unwrap_or_default();
+        let results = Self::parse_duckduckgo_lite(&html, max_results);
         Ok(results)
     }
 
@@ -161,11 +491,12 @@ impl WebTools {
                 break;
             }
 
-            // Extract H2 section
-            let h2_content = if let Some(start) = block.find("<h2") {
+            // Extract H2 or H3 section
+            let h_content = if let Some(start) = block.find("<h2").or_else(|| block.find("<h3")) {
                 if let Some(tag_close) = block[start..].find('>') {
                     let inner_start = start + tag_close + 1;
-                    if let Some(end) = block[inner_start..].find("</h2>") {
+                    let close_tag = if block[start..].starts_with("<h2") { "</h2>" } else { "</h3>" };
+                    if let Some(end) = block[inner_start..].find(close_tag) {
                         &block[inner_start..inner_start + end]
                     } else {
                         ""
@@ -177,9 +508,9 @@ impl WebTools {
                 ""
             };
 
-            // Extract href from h2 or block
-            let raw_url = if !h2_content.is_empty() {
-                extract_href(h2_content).unwrap_or_else(|| extract_first_href(block).unwrap_or_default())
+            // Extract href from heading or block
+            let raw_url = if !h_content.is_empty() {
+                extract_href(h_content).unwrap_or_else(|| extract_first_href(block).unwrap_or_default())
             } else {
                 extract_first_href(block).unwrap_or_default()
             };
@@ -195,17 +526,18 @@ impl WebTools {
 
             let clean_url = unwrap_bing_url(&raw_url);
 
-            // Extract Title from h2
-            let raw_title = if !h2_content.is_empty() {
-                h2_content.to_string()
-            } else if let Some(title_pos) = block.find("<h2") {
-                extract_text_between_tags(&block[title_pos..], ">", "</h2>").unwrap_or_default()
+            // Extract Title from heading
+            let raw_title = if !h_content.is_empty() {
+                h_content.to_string()
+            } else if let Some(title_pos) = block.find("<h2").or_else(|| block.find("<h3")) {
+                let close = if block[title_pos..].starts_with("<h2") { "</h2>" } else { "</h3>" };
+                extract_text_between_tags(&block[title_pos..], ">", close).unwrap_or_default()
             } else {
                 String::new()
             };
             let clean_title = decode_html_entities(&strip_html_tags(&raw_title)).trim().to_string();
 
-            // Extract Snippet from <p> or <div class="b_caption">
+            // Extract Snippet from <p>, <div class="b_caption"> or <p class="b_lineclamp
             let raw_snippet = if let Some(p_start) = block.find("<p") {
                 if let Some(tag_close) = block[p_start..].find('>') {
                     let inner_start = p_start + tag_close + 1;
@@ -236,19 +568,6 @@ impl WebTools {
         results
     }
 
-    async fn fallback_search_html(client: &reqwest::Client, query: &str) -> Result<String, String> {
-        let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding(query));
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| format!("Web search request failed: {}", e))?;
-
-        resp.text()
-            .await
-            .map_err(|e| format!("Failed to read search response body: {}", e))
-    }
-
     /// Parses search results from DuckDuckGo HTML page
     pub fn parse_duckduckgo_html(html: &str, max_results: usize) -> Vec<WebSearchResult> {
         let mut results = Vec::new();
@@ -259,6 +578,11 @@ impl WebTools {
         for block in blocks.iter().skip(1) {
             if results.len() >= limit {
                 break;
+            }
+
+            // Skip sponsored/ad blocks
+            if block.starts_with("result--ad") || block.contains("result__badge--ad") || block.contains("ad_provider") {
+                continue;
             }
 
             // Extract URL from <a class="result__url" href="..."> or <a class="result__snippet" ...>
@@ -272,8 +596,16 @@ impl WebTools {
                 extract_first_href(block).unwrap_or_default()
             };
 
+            // Skip DDG internal ad click URLs
+            if url.contains("duckduckgo.com/y.js") || url.contains("/aclick?") {
+                continue;
+            }
+
             // Clean DuckDuckGo redirect URL if necessary (/l/?uddg=...)
             let clean_url = clean_ddg_url(&url);
+            if clean_url.is_empty() || clean_url.contains("duckduckgo.com/") {
+                continue;
+            }
 
             // Extract Title from class="result__title"
             let title = if let Some(title_pos) = block.find("result__title") {
@@ -293,8 +625,14 @@ impl WebTools {
                 String::new()
             };
 
-            let clean_title = decode_html_entities(&strip_html_tags(&title));
-            let clean_snippet = decode_html_entities(&strip_html_tags(&snippet));
+            let clean_title = decode_html_entities(&strip_html_tags(&title))
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let clean_snippet = decode_html_entities(&strip_html_tags(&snippet))
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
 
             if !clean_url.is_empty() && (!clean_title.is_empty() || !clean_snippet.is_empty()) {
                 results.push(WebSearchResult {
@@ -321,7 +659,14 @@ impl WebTools {
             }
 
             let url = extract_href(row).unwrap_or_default();
+            if url.contains("duckduckgo.com/y.js") || url.contains("/aclick?") {
+                continue;
+            }
+
             let clean_url = clean_ddg_url(&url);
+            if clean_url.is_empty() || clean_url.contains("duckduckgo.com/") {
+                continue;
+            }
 
             let title = extract_text_between_tags(row, ">", "</a>").unwrap_or_default();
 
@@ -333,8 +678,14 @@ impl WebTools {
                 String::new()
             };
 
-            let clean_title = decode_html_entities(&strip_html_tags(&title));
-            let clean_snippet = decode_html_entities(&strip_html_tags(&snippet));
+            let clean_title = decode_html_entities(&strip_html_tags(&title))
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let clean_snippet = decode_html_entities(&strip_html_tags(&snippet))
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
 
             if !clean_url.is_empty() {
                 results.push(WebSearchResult {
@@ -358,7 +709,7 @@ impl WebTools {
         let max_chars = max_characters.unwrap_or(8000).clamp(500, 32000);
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(12))
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
             .redirect(reqwest::redirect::Policy::limited(5))
             .build()
@@ -366,21 +717,63 @@ impl WebTools {
 
         let response = client
             .get(trimmed_url)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+            .header("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+            .header("Sec-Ch-Ua", "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"")
+            .header("Sec-Ch-Ua-Mobile", "?0")
+            .header("Sec-Ch-Ua-Platform", "\"macOS\"")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Upgrade-Insecure-Requests", "1")
             .send()
-            .await
-            .map_err(|e| format!("Failed to fetch URL '{}': {}", trimmed_url, e))?;
+            .await;
 
-        let status = response.status();
-        if !status.is_success() {
-            return Err(format!("HTTP error {} when requesting '{}'", status, trimmed_url));
+        let mut needs_rendered_fallback = false;
+        let mut raw_html = String::new();
+
+        match response {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    raw_html = resp.text().await.unwrap_or_default();
+                    let lower = raw_html.to_lowercase();
+                    let is_challenge = lower.contains("verifying your browser")
+                        || lower.contains("cf-browser-verification")
+                        || lower.contains("challenge-form")
+                        || lower.contains("ddg.deep.anomalydetectionblock");
+                    let is_spa_shell = (lower.contains("id=\"root\"") || lower.contains("id=\"__next\"") || lower.contains("id=\"app\""))
+                        && raw_html.len() < 3000;
+
+                    if is_challenge || is_spa_shell {
+                        needs_rendered_fallback = true;
+                    }
+                } else {
+                    needs_rendered_fallback = true;
+                }
+            }
+            Err(_) => {
+                needs_rendered_fallback = true;
+            }
         }
 
-        let raw_html = response
-            .text()
-            .await
-            .map_err(|e| format!("Failed to read webpage content: {}", e))?;
+        if needs_rendered_fallback {
+            log::info!("🔄 HTTP fetch encountered SPA or challenge. Falling back to Headless Browser Engine for '{}'", trimmed_url);
+            if let Ok(rendered) = crate::services::browser_engine::BrowserEngine::fetch_page_rendered(trimmed_url, Some(3500), Some(max_chars)).await {
+                if !rendered.trim().is_empty() {
+                    return Ok(rendered);
+                }
+            }
+        }
 
         let markdown = Self::convert_html_to_markdown(&raw_html);
+        if markdown.trim().len() < 80 {
+            log::info!("🔄 Extracted markdown is minimal (< 80 chars). Attempting Headless Browser Engine rendering for '{}'", trimmed_url);
+            if let Ok(rendered) = crate::services::browser_engine::BrowserEngine::fetch_page_rendered(trimmed_url, Some(3500), Some(max_chars)).await {
+                if !rendered.trim().is_empty() {
+                    return Ok(rendered);
+                }
+            }
+        }
 
         if markdown.len() > max_chars {
             let mut truncated = markdown.chars().take(max_chars).collect::<String>();
@@ -456,7 +849,7 @@ impl WebTools {
     }
 }
 
-fn urlencoding(input: &str) -> String {
+pub fn urlencoding(input: &str) -> String {
     let mut encoded = String::with_capacity(input.len() * 3);
     for b in input.bytes() {
         match b {
@@ -483,7 +876,7 @@ fn extract_first_href(slice: &str) -> Option<String> {
     extract_href(slice)
 }
 
-fn clean_ddg_url(url: &str) -> String {
+pub fn clean_ddg_url(url: &str) -> String {
     if url.contains("uddg=") {
         if let Some(pos) = url.find("uddg=") {
             let encoded = &url[pos + 5..];
@@ -630,17 +1023,57 @@ fn strip_html_tags(input: &str) -> String {
     output
 }
 
-fn decode_html_entities(input: &str) -> String {
-    input
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&apos;", "'")
-        .replace("&nbsp;", " ")
-        .replace("&mdash;", "—")
-        .replace("&ndash;", "–")
+pub fn decode_html_entities(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '&' {
+            let mut entity = String::new();
+            while let Some(&next_ch) = chars.peek() {
+                if next_ch == ';' {
+                    chars.next();
+                    break;
+                }
+                if next_ch == '&' || next_ch == ' ' || entity.len() > 10 {
+                    break;
+                }
+                entity.push(chars.next().unwrap());
+            }
+
+            if entity.starts_with('#') {
+                let code = if entity.starts_with("#x") || entity.starts_with("#X") {
+                    u32::from_str_radix(&entity[2..], 16).ok()
+                } else {
+                    entity[1..].parse::<u32>().ok()
+                };
+                if let Some(c) = code.and_then(char::from_u32) {
+                    out.push(c);
+                    continue;
+                }
+            } else {
+                match entity.as_str() {
+                    "amp" => { out.push('&'); continue; }
+                    "lt" => { out.push('<'); continue; }
+                    "gt" => { out.push('>'); continue; }
+                    "quot" => { out.push('"'); continue; }
+                    "apos" | "#39" => { out.push('\''); continue; }
+                    "nbsp" => { out.push(' '); continue; }
+                    "mdash" => { out.push('—'); continue; }
+                    "ndash" => { out.push('–'); continue; }
+                    _ => {}
+                }
+            }
+
+            out.push('&');
+            out.push_str(&entity);
+            out.push(';');
+        } else {
+            out.push(ch);
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -721,5 +1154,77 @@ mod tests {
         assert!(!list.is_empty(), "Live search must return results and not empty []");
         assert!(list[0].url.starts_with("http"), "URL must be valid http/https");
         assert!(!list[0].title.is_empty(), "Title must not be empty");
+    }
+
+    #[test]
+    fn test_decode_html_entities_numeric() {
+        let input = "Caf&#233; &amp; na&#239;ve fa&#231;ade";
+        assert_eq!(decode_html_entities(input), "Café & naïve façade");
+    }
+
+    #[tokio::test]
+    async fn test_conversational_news_query() {
+        let queries = [
+            "AI models launched recently 2026 new release",
+            "novos modelos de IA lançados 2026",
+            "newest AI models released 2026 GPT-5 Gemini 3 Claude latest",
+            "newest AI chatbot models released 2026 OpenAI Google Anthropic Meta xAI",
+            "GPT-5 Gemini 2.5 Claude Opus 4 release date 2026",
+        ];
+
+        for q in queries {
+            let results = WebTools::search(q, 3).await;
+            println!("\n🔍 QUERY '{}' => {:#?}\n", q, results);
+            assert!(results.is_ok(), "Search should succeed for query: {}", q);
+            let list = results.unwrap();
+            assert!(!list.is_empty(), "Results must not be empty for query: {}", q);
+            for r in &list {
+                assert!(!r.url.is_empty());
+                assert!(!r.url.contains("webmotors.com.br"));
+                assert!(!r.url.contains("tripadvisor.com"));
+                assert!(!r.url.contains("dicio.com.br"));
+                assert!(!r.title.contains("&#"));
+                assert!(!r.snippet.contains("&#"));
+                assert!(!r.title.starts_with('\n'), "Title should not start with newline");
+            }
+        }
+    }
+
+    #[test]
+    fn test_topical_keywords_extraction() {
+        let kws = WebTools::extract_topical_keywords("novos modelos de IA lançados 2026");
+        assert!(kws.contains(&"modelos".to_string()));
+        assert!(kws.contains(&"ia".to_string()));
+        assert!(!kws.contains(&"novos".to_string()));
+
+        let kws_en = WebTools::extract_topical_keywords("newest AI models released 2026 GPT-5 Gemini 3 Claude latest");
+        assert!(kws_en.contains(&"ai".to_string()));
+        assert!(kws_en.contains(&"models".to_string()));
+    }
+
+    #[test]
+    fn test_filter_irrelevant_results_rejects_hallucinations() {
+        let query = "newest AI models released 2026 GPT-5 Gemini 3 Claude latest";
+        let junk = vec![
+            WebSearchResult {
+                title: "Official Chicago Cubs Website | MLB.com".to_string(),
+                url: "https://www.mlb.com/cubs".to_string(),
+                snippet: "The official website of the Chicago Cubs with news and tickets.".to_string(),
+            },
+            WebSearchResult {
+                title: "Best Debt Relief Companies Of September 2026".to_string(),
+                url: "https://www.forbes.com/advisor/debt-relief".to_string(),
+                snippet: "See how settlement fees and monthly costs compare.".to_string(),
+            },
+            WebSearchResult {
+                title: "Upcoming AI Models 2026: Confirmed Dates vs Targets".to_string(),
+                url: "https://aitoolsrecap.com/blog/upcoming-ai-models-2026".to_string(),
+                snippet: "AI Model Release Tracker: Updated September 2026 with GPT-6 and Claude.".to_string(),
+            },
+        ];
+
+        let filtered = WebTools::filter_irrelevant_results(query, junk);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].title, "Upcoming AI Models 2026: Confirmed Dates vs Targets");
     }
 }

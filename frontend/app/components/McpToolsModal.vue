@@ -109,15 +109,24 @@
             <div class="p-3.5 bg-[#141828] border-b border-[#1d2338] flex items-center justify-between gap-3 select-none">
               <div class="flex items-center gap-2.5 min-w-0 flex-1">
                 <span class="w-2 h-2 rounded-full flex-shrink-0" :class="server.enabled ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-slate-500'"></span>
-                <span class="font-bold text-xs text-slate-100 flex-shrink-0" :title="server.name">{{ server.name }}</span>
-                <span class="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 uppercase flex-shrink-0">
-                  {{ server.transport }}
+                <span class="font-bold text-xs text-slate-100 flex-shrink-0" :title="server.id === 'atena_native' ? $t('memory.server_atena_native_tools') : server.name">
+                  {{ server.id === 'atena_native' ? $t('memory.server_atena_native_tools') : server.name }}
+                </span>
+                <span
+                  :class="[
+                    'text-[9.5px] font-mono px-1.5 py-0.2 rounded uppercase flex-shrink-0 border',
+                    server.transport === 'builtin'
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 font-semibold'
+                      : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20'
+                  ]"
+                >
+                  {{ server.transport === 'builtin' ? $t('settings.mcp_builtin_transport') : server.transport }}
                 </span>
                 <span v-if="server.enabled && (serverTools[server.id] || []).length > 0" class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/5 text-slate-300 border border-white/10 flex-shrink-0">
                   {{ getActiveServerToolsCount(server) }}/{{ (serverTools[server.id] || []).length }} {{ $t('settings.mcp_active_tools') }}
                 </span>
-                <span class="text-[10.5px] font-mono text-slate-400 truncate hidden sm:inline flex-1 min-w-0" :title="server.transport === 'stdio' ? `${server.command || ''} ${(server.args || []).join(' ')}` : (server.url || '')">
-                  {{ server.transport === 'stdio' ? `${server.command} ${(server.args || []).join(' ')}` : server.url }}
+                <span class="text-[10.5px] font-mono text-slate-400 truncate hidden sm:inline flex-1 min-w-0" :title="server.transport === 'stdio' ? `${server.command || ''} ${(server.args || []).join(' ')}` : (server.transport === 'builtin' ? (server.description || $t('settings.mcp_native_server_desc')) : (server.url || ''))">
+                  {{ server.transport === 'stdio' ? `${server.command} ${(server.args || []).join(' ')}` : (server.transport === 'builtin' ? (server.description || $t('settings.mcp_native_server_desc')) : server.url) }}
                 </span>
               </div>
 

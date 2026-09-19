@@ -55,10 +55,16 @@
         <!-- Live LM Studio Inference Status Badge -->
         <div
           v-if="isGenerating"
-          class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono animate-pulse"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono transition-all"
+          :class="liveInferenceStatus?.stage === 'prompt' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 animate-pulse'"
         >
-          <Loader2 class="w-3 h-3 animate-spin text-emerald-400" />
-          <span>{{ $t('settings.generating_tokens') }}</span>
+          <Loader2 class="w-3 h-3 animate-spin" :class="liveInferenceStatus?.stage === 'prompt' ? 'text-amber-400' : 'text-emerald-400'" />
+          <span v-if="liveInferenceStatus?.stage === 'prompt'">
+            {{ $t('settings.processing_prompt') }}<span v-if="liveInferenceStatus.text"> ({{ liveInferenceStatus.text }})</span>
+          </span>
+          <span v-else>
+            {{ $t('settings.generating_tokens') }}<span v-if="liveInferenceStatus?.text"> ({{ liveInferenceStatus.text }})</span>
+          </span>
         </div>
       </div>
 
@@ -349,9 +355,36 @@ const filteredDevLogs = computed(() => {
   )
 })
 
-// Auto scroll on new logs
+const liveInferenceStatus = computed(() => {
+  if (!props.isGenerating) return null
+  const logs = props.developerLogs
+  if (!logs || logs.length === 0) return { stage: 'generating', text: '' }
+
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const entry = logs[i]
+    if (!entry) continue
+    const msg = entry.message || ''
+    if (msg.startsWith('Prompt processing progress:')) {
+      const match = msg.match(/Prompt processing progress:\s*([\d\.]+%)/)
+      const pct = match?.[1] || ''
+      if (pct && pct !== '100.0%') {
+        return { stage: 'prompt', text: pct }
+      }
+    } else if (msg.startsWith('Generating response:')) {
+      const match = msg.match(/Generating response:\s*(\d+\s*tokens\s*\([^)]+\))/)
+      const genText = match?.[1] ? match[1].replace('...', '') : ''
+      return { stage: 'generating', text: genText }
+    }
+  }
+  return { stage: 'generating', text: '' }
+})
+
+// Auto scroll on new logs and in-place updates
 watch(
-  () => props.developerLogs.length,
+  [
+    () => props.developerLogs.length,
+    () => props.developerLogs[props.developerLogs.length - 1]?.message
+  ],
   async () => {
     if (autoScroll.value && activeTab.value === 'developer') {
       await nextTick()

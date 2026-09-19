@@ -835,11 +835,11 @@ pub async fn execute_stream_chat_internal(
     let is_memory_enabled = enable_memory.unwrap_or(false);
     let app_cfg = crate::core::config::AppConfig::load();
     let use_facts = is_memory_enabled && enable_facts_memory.unwrap_or(app_cfg.enable_facts_memory);
-    let use_skills = enable_skills_memory.unwrap_or(app_cfg.enable_skills_memory);
+    let use_skills = is_memory_enabled && enable_skills_memory.unwrap_or(app_cfg.enable_skills_memory);
     let use_episodic = is_memory_enabled && enable_episodic_memory.unwrap_or(app_cfg.enable_episodic_memory);
 
     if !is_memory_enabled {
-        log::info!("🧠 Cognitive memory disabled or suppressed: lightweight inference without neural associative prompt, facts, or episodic tools.");
+        log::info!("🧠 Cognitive memory disabled or suppressed: lightweight inference without neural associative prompt, facts, episodic tools, or procedural skills.");
         if let Some(ref mut tools) = params.mcp_tools {
             // Suppress only associative cognitive memory tools, preserving native utilities (web search, webpage reader, scratchpad, scheduler)
             tools.retain(|t| {
@@ -1190,6 +1190,11 @@ async fn stream_chat(
         let _ = on_event.send(chunk);
     });
     execute_stream_chat_internal(&state, req, cb).await
+}
+
+#[command]
+fn stop_chat_generation() {
+    crate::services::backend::BackendManager::abort_active_inference();
 }
 
 #[command]
@@ -2178,6 +2183,16 @@ pub async fn execute_tool_call_internal(
         server_id
     };
 
+    let servers = state.mcp_manager.get_servers().await;
+    if let Some(server) = servers.iter().find(|s| s.id == effective_server) {
+        if !server.enabled {
+            return Err(format!("Tool server '{}' is disabled.", effective_server));
+        }
+        if server.disabled_tools.contains(&tool_name.to_string()) {
+            return Err(format!("Tool '{}' is disabled in server settings.", tool_name));
+        }
+    }
+
     if effective_server == "atena_native" || effective_server == "atena" {
         match tool_name {
             "atena_search_episodes" => {
@@ -2372,6 +2387,10 @@ pub async fn execute_tool_call_internal(
         }
     }
     if effective_server == "skills" || tool_name == "run_command" || tool_name == "run_skill_command" || tool_name == "run_skill_script" || tool_name == "create_procedural_skill" || tool_name == "update_procedural_skill" || tool_name == "edit_procedural_skill" {
+        let app_cfg = crate::core::config::AppConfig::load();
+        if !app_cfg.enable_cognitive_memory || !app_cfg.enable_skills_memory {
+            return Err("Procedural skills and terminal automation are currently disabled in settings.".to_string());
+        }
         match tool_name {
             "create_procedural_skill" => {
                 let name = arguments.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -2429,6 +2448,9 @@ pub async fn execute_tool_call_internal(
                         || s.name.eq_ignore_ascii_case(slug)
                         || s.id.trim_start_matches("skill-") == slug.trim_start_matches("skill-")
                 }).ok_or_else(|| format!("Skill '{}' não encontrada", slug))?;
+                if !skill.enabled {
+                    return Err(format!("A habilidade procedural '{}' está desabilitada.", skill.name));
+                }
                 let folder = skill.folder_path.as_ref().ok_or_else(|| "Pasta da skill não configurada".to_string())?;
                 let skill_dir = std::path::PathBuf::from(folder);
                 let clean_script = script_file.trim_start_matches('/');
@@ -3059,7 +3081,7 @@ async fn memory_get_vigilia_buffer() -> Result<Vec<VigiliaEvent>, String> {
     Ok(MemoryGraphEngine::load_vigilia_buffer())
 }
 
-/// Otimização estrutural, análise de conexões e poda do grafo de memória
+/// Structural optimization, connection analysis, and memory graph pruning
 #[command]
 async fn memory_optimize_and_prune(
     state: State<'_, AppState>,
@@ -3866,6 +3888,7 @@ pub fn run() {
             set_active_model,
             get_active_model,
             stream_chat,
+            stop_chat_generation,
             start_mlx_server,
             start_llama_server,
             start_ollama_server,
@@ -3983,6 +4006,7 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             LocalServerController::init_handle(handle.clone());
+            crate::services::browser_engine::BrowserEngine::init_handle(handle.clone());
             if let Err(e) = tray::setup_tray(&handle) {
                 log::warn!("Failed to initialize system tray: {}", e);
             }

@@ -75,7 +75,8 @@
           <span v-if="activeModel.size_gb && activeModel.size_gb > 0"
             class="hidden md:inline text-[11px] text-slate-500">•</span>
           <span v-if="activeModel.size_gb && activeModel.size_gb > 0"
-            class="hidden md:inline text-[11px] font-mono text-slate-400 whitespace-nowrap">
+            class="hidden md:inline text-[11px] font-mono text-slate-400 whitespace-nowrap cursor-help"
+            :title="$t('header.model_size_tooltip', { size: formatGb(activeModel.size_gb || 0) })">
             {{ `${formatGb(activeModel.size_gb || 0)} GB` }}
           </span>
 
@@ -149,7 +150,7 @@
         class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-medium border bg-[#121522] border-teal-500/20 text-teal-300 transition-all cursor-help"
         :title="$t('header.ai_vram_tooltip', { vram: formatGb(hardware.ai_ram_gb || hardware.used_vram_gb), used: formatGb(hardware.used_ram_gb), total: formatGb(hardware.total_ram_gb), pct: ramPct, free: formatGb(hardware.free_ram_gb) })">
         <Zap class="w-3 h-3 text-teal-400 flex-shrink-0" />
-        <span class="text-[10px] uppercase font-sans font-semibold text-slate-400 hidden lg:inline">IA VRAM</span>
+        <span class="text-[10px] uppercase font-sans font-semibold text-slate-400 hidden lg:inline">{{ $t('header.vram_label') }}</span>
         <span class="font-bold text-teal-300">{{ formatGb(hardware.ai_ram_gb || hardware.used_vram_gb) }} GB</span>
       </div>
 
@@ -169,9 +170,11 @@
         isDrawerOpen
           ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/25'
           : 'bg-[#121522] hover:bg-[#181d2e] border-[#1e2338] hover:border-indigo-500/30 text-slate-200'
-      ]">
+      ]"
+      :title="$t('header.inference_tooltip')"
+      >
         <SlidersHorizontal class="w-3.5 h-3.5 text-indigo-400" />
-        <span class="hidden md:inline">{{ isDrawerOpen ? $t('common.close') : $t('header.parameters') }}</span>
+        <span class="hidden md:inline">{{ isDrawerOpen ? $t('common.close') : $t('header.inference') }}</span>
       </button>
     </div>
   </header>

@@ -1368,10 +1368,17 @@
                 <div class="flex items-start justify-between gap-4">
                   <div class="space-y-1 min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
-                      <h4 class="text-sm font-bold text-slate-100 shrink-0" :title="server.name">{{ server.name }}</h4>
+                      <h4 class="text-sm font-bold text-slate-100 shrink-0" :title="server.id === 'atena_native' ? $t('memory.server_atena_native_tools') : server.name">
+                        {{ server.id === 'atena_native' ? $t('memory.server_atena_native_tools') : server.name }}
+                      </h4>
                       <span
-                        class="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#181d2e] text-indigo-300 border border-[#262e45]">
-                        {{ server.transport }}
+                        :class="[
+                          'text-[10px] font-mono px-2 py-0.5 rounded-md border',
+                          server.transport === 'builtin'
+                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 font-semibold'
+                            : 'bg-[#181d2e] text-indigo-300 border-[#262e45]'
+                        ]">
+                        {{ server.transport === 'builtin' ? $t('settings.mcp_builtin_transport') : server.transport }}
                       </span>
                       <span :class="[
                         'text-[10px] font-semibold px-2 py-0.5 rounded-md border',
@@ -1398,7 +1405,7 @@
                     </div>
                     <p class="text-xs text-slate-400 truncate font-mono">
                       {{ server.transport === 'stdio' ? `${server.command} ${(server.args || []).join(' ')}` :
-                        server.url }}
+                        (server.transport === 'builtin' ? (server.description || $t('settings.mcp_native_server_desc')) : server.url) }}
                     </p>
                     <div v-if="server.headers && Object.keys(server.headers).length > 0"
                       class="flex flex-wrap gap-1 pt-0.5">
@@ -1428,14 +1435,14 @@
                       {{ server.enabled ? $t('settings.mcp_disable_server') : $t('settings.mcp_enable_server') }}
                     </button>
 
-                    <button @click="editMcpServer(server)"
-                      class="p-1.5 rounded-xl bg-[#141824] hover:bg-[#1b2030] border border-[#22283b] text-slate-400 hover:text-slate-200 transition-all"
+                    <button v-if="server.transport !== 'builtin' && server.id !== 'atena_native'" @click="editMcpServer(server)"
+                      class="p-1.5 rounded-xl bg-[#141824] hover:bg-[#1b2030] border border-[#22283b] text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
                       :title="$t('settings.mcp_edit_server_tooltip')">
                       <Settings class="w-3.5 h-3.5" />
                     </button>
 
-                    <button @click="deleteMcpServer(server.id)"
-                      class="p-1.5 rounded-xl bg-[#141824] hover:bg-rose-500/15 border border-[#22283b] hover:border-rose-500/30 text-slate-400 hover:text-rose-300 transition-all"
+                    <button v-if="server.transport !== 'builtin' && server.id !== 'atena_native'" @click="deleteMcpServer(server.id)"
+                      class="p-1.5 rounded-xl bg-[#141824] hover:bg-rose-500/15 border border-[#22283b] hover:border-rose-500/30 text-slate-400 hover:text-rose-300 transition-all cursor-pointer"
                       :title="$t('settings.mcp_delete_server_tooltip')">
                       <Trash2 class="w-3.5 h-3.5" />
                     </button>
@@ -3917,6 +3924,10 @@ const saveMcpModal = async () => {
 }
 
 const deleteMcpServer = async (id: string) => {
+  const target = mcpServers.value.find((s) => s.id === id)
+  if (target?.transport === 'builtin' || id === 'atena_native') {
+    return
+  }
   mcpServers.value = mcpServers.value.filter((s) => s.id !== id)
   delete mcpServerTools.value[id]
   delete mcpServerErrors.value[id]

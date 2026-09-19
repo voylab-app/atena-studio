@@ -174,12 +174,12 @@
     <!-- History / Sessions Area -->
     <div class="flex-1 overflow-hidden flex flex-col p-3 gap-2">
       <!-- Chat Creation Actions -->
-      <div :class="['flex items-center gap-1.5', enableMemory !== false ? '' : '']">
+      <div class="flex items-center gap-1.5">
         <button
           @click="$emit('newChat')"
           :class="[
             'flex items-center justify-center gap-1.5 py-2 px-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all active:scale-[0.97] border border-indigo-400/25 group cursor-pointer',
-            enableMemory !== false ? 'flex-1 min-w-0' : 'w-full'
+            isPrivateChatAvailable ? 'flex-1 min-w-0' : 'w-full'
           ]"
           :title="$t('sidebar.new_chat_tooltip')"
         >
@@ -187,9 +187,9 @@
           <span class="truncate">{{ $t('sidebar.new_chat') }}</span>
         </button>
 
-        <!-- Private Chat Button (Visible when Cognitive Memory is active) -->
+        <!-- Private Chat Button (Visible only when Cognitive Memory has active layers) -->
         <button
-          v-if="enableMemory !== false"
+          v-if="isPrivateChatAvailable"
           @click="$emit('newPrivateChat')"
           class="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-medium bg-[#131728] hover:bg-violet-950/40 border border-[#232a44] hover:border-violet-500/40 text-violet-300 hover:text-violet-200 transition-all active:scale-[0.97] shadow-sm group cursor-pointer flex-shrink-0"
           :title="$t('sidebar.private_chat_tooltip')"
@@ -206,7 +206,7 @@
           ref="searchInputRef"
           v-model="searchQuery"
           type="text"
-          :placeholder="`${$t('common.search')} (⌘K)`"
+          :placeholder="$t('sidebar.search_chats_placeholder')"
           class="w-full pl-8 pr-7 py-1.5 rounded-xl bg-[#10131f] border border-[#1b2133] focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 text-slate-200 placeholder-slate-500 text-[11px] outline-none transition-all"
         />
         <button
@@ -905,7 +905,14 @@ const props = defineProps<{
   hardware?: HardwareInfo | any
   activeModel?: Model | null
   enableMemory?: boolean
+  enablePrivateChat?: boolean
 }>()
+
+const isPrivateChatAvailable = computed(() => {
+  if (props.enableMemory === false) return false
+  if (props.enablePrivateChat !== undefined) return props.enablePrivateChat
+  return true
+})
 
 const supportsMlx = inject<Ref<boolean> | ComputedRef<boolean>>('supportsMlx', computed(() => false))
 const platformInfo = inject<Ref<{ os: string; supports_mlx: boolean }>>('platformInfo', ref({ os: 'linux', supports_mlx: false }))

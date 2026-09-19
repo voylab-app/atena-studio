@@ -456,14 +456,14 @@ impl MemoryGraphEngine {
         let edges = self
             .adjacency
             .get_mut(&source_id)
-            .ok_or_else(|| format!("Nenhuma aresta partindo do nó {}", source_id))?;
+            .ok_or_else(|| format!("No edges found starting from node {}", source_id))?;
 
         let edge = edges
             .iter_mut()
             .find(|e| e.target_id == target_id)
-            .ok_or_else(|| format!("Aresta {} -> {} não encontrada", source_id, target_id))?;
+            .ok_or_else(|| format!("Edge {} -> {} not found", source_id, target_id))?;
 
-        // Reforço sináptico: aumenta peso e contador
+        // Synaptic reinforcement: increase weight and access count
         edge.weight += 0.1;
         edge.access_count += 1;
         edge.last_accessed = now;
@@ -657,6 +657,14 @@ impl MemoryGraphEngine {
 
                     let new_weight = current.accumulated_weight * edge.weight;
 
+                    // Immediately register direct 1-hop facts and safety rules as primary association paths
+                    if current.depth == 0 || edge.relation_type == RelationType::AvoidAction || target_node.type_flag == NodeType::RuleOrAlert {
+                        results.push(AssociationPath {
+                            steps: new_path.clone(),
+                            total_weight: new_weight,
+                        });
+                    }
+
                     heap.push(ActivationNode {
                         node_id: *neighbor_id,
                         accumulated_weight: new_weight,
@@ -667,7 +675,7 @@ impl MemoryGraphEngine {
                 }
             }
 
-            if !expanded && current.path.len() > 1 {
+            if !expanded && current.path.len() > 1 && current.depth > 0 {
                 results.push(AssociationPath {
                     steps: current.path,
                     total_weight: current.accumulated_weight,
@@ -691,11 +699,17 @@ impl MemoryGraphEngine {
             });
         }
 
-        // Sort by descending total weight and keep top paths
+        // Sort by descending total weight and keep top paths, prioritizing safety rules and direct relationships
         results.sort_by(|a, b| {
+            let a_has_rule = a.steps.iter().any(|s| s.relation == Some(RelationType::AvoidAction) || s.node_type == NodeType::RuleOrAlert);
+            let b_has_rule = b.steps.iter().any(|s| s.relation == Some(RelationType::AvoidAction) || s.node_type == NodeType::RuleOrAlert);
+            if a_has_rule != b_has_rule {
+                return b_has_rule.cmp(&a_has_rule);
+            }
             b.total_weight
                 .partial_cmp(&a.total_weight)
                 .unwrap_or(Ordering::Equal)
+                .then_with(|| a.steps.len().cmp(&b.steps.len()))
         });
         results.truncate(32);
 
@@ -705,7 +719,7 @@ impl MemoryGraphEngine {
     /// Fetches neighbors of a node: queries Hot Cache first, then graph.
     /// Edges found in graph are promoted to cache.
     pub fn get_neighbors_cached(&mut self, node_id: u32) -> Vec<MemoryEdge> {
-        // Tentar Hot Cache primeiro
+        // Try Hot Cache first
         let cached = self.hot_cache.get_neighbors(node_id);
         if !cached.is_empty() {
             return cached;
@@ -716,7 +730,7 @@ impl MemoryGraphEngine {
             let mut result = edges.clone();
             result.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(Ordering::Equal));
 
-            // Promover ao Hot Cache
+            // Promote to Hot Cache
             for edge in &result {
                 self.hot_cache.insert(edge.clone());
             }
@@ -753,12 +767,12 @@ impl MemoryGraphEngine {
     }
 
     // =========================================================================
-    // Sintetizador de Contexto para LLM
+    // LLM Context Synthesizer
     // =========================================================================
 
-    /// Formata um timestamp de memória para exibição compreensível pela LLM e pelo usuário,
-    /// incluindo tanto a data/hora absoluta quanto o tempo decorrido relativo.
-    /// Exemplo: "01/09/2026 12:30 (hoje)" ou "15/08/2026 14:20 (há 17 dias)"
+    /// Formats a memory timestamp for human and LLM readable display,
+    /// including both absolute date/time and relative elapsed time.
+    /// Example: "01/09/2026 12:30 (today)" or "15/08/2026 14:20 (17 days ago)"
     pub fn format_memory_timestamp(ts: u64, current_ts: u64) -> String {
         if ts == 0 {
             return "unknown date".to_string();
@@ -835,19 +849,19 @@ impl MemoryGraphEngine {
     }
 
     // =========================================================================
-    // Serialização Binária
+    // Binary Serialization
     // =========================================================================
 
-    /// Serializa todo o grafo em um buffer binário compacto.
+    /// Serializes the entire graph into a compact binary buffer.
     ///
-    /// Formato: [node_count: u32][nodes...][edge_count: u32][edges...]
+    /// Format: [node_count: u32][nodes...][edge_count: u32][edges...]
     pub fn serialize_to_bytes(&self) -> Vec<u8> {
-        // Estimar tamanho: nodes (variável) + edges (25 bytes cada) + contadores (8 bytes)
+        // Estimate size: nodes (variable) + edges (25 bytes each) + counters (8 bytes)
         let estimated_size =
             8 + self.nodes.len() * 32 + self.edge_count() * MemoryEdge::BYTE_SIZE;
         let mut buf = Vec::with_capacity(estimated_size);
 
-        // --- Nós ---
+        // --- Nodes ---
         let node_count = self.nodes.len() as u32;
         buf.extend_from_slice(&node_count.to_le_bytes());
 
@@ -860,7 +874,7 @@ impl MemoryGraphEngine {
             }
         }
 
-        // --- Arestas ---
+        // --- Edges ---
         let edge_count = self.edge_count() as u32;
         buf.extend_from_slice(&edge_count.to_le_bytes());
 
@@ -877,18 +891,18 @@ impl MemoryGraphEngine {
         buf
     }
 
-    /// Deserializa um buffer binário usando a versão atual do sistema.
+    /// Deserializes a binary buffer using the current system version.
     pub fn deserialize_from_bytes(data: &[u8], cache_capacity: usize) -> Result<Self, String> {
         Self::deserialize_from_bytes_version(data, cache_capacity, CURRENT_VERSION)
     }
 
-    /// Deserializa um buffer binário e reconstrói o grafo completo com suporte retrocompatível a versões (v1 e v2).
+    /// Deserializes a binary buffer and reconstructs the full graph with backward compatibility for versions (v1 and v2).
     pub fn deserialize_from_bytes_version(data: &[u8], cache_capacity: usize, version: u16) -> Result<Self, String> {
         let mut offset = 0;
 
-        // --- Nós ---
+        // --- Nodes ---
         if data.len() < offset + 4 {
-            return Err("Buffer muito curto para node_count".into());
+            return Err("Buffer too short for node_count".into());
         }
         let node_count =
             u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
@@ -908,9 +922,9 @@ impl MemoryGraphEngine {
             nodes.insert(node.id, node);
         }
 
-        // --- Arestas ---
+        // --- Edges ---
         if data.len() < offset + 4 {
-            return Err("Buffer muito curto para edge_count".into());
+            return Err("Buffer too short for edge_count".into());
         }
         let edge_count =
             u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
@@ -1009,16 +1023,16 @@ impl MemoryGraphEngine {
             .map_err(|e| format!("Error reading file '{}': {}", filepath.display(), e))?;
 
         if file_data.len() < FileHeader::SIZE {
-            return Err("Arquivo muito pequeno para conter header válido".into());
+            return Err("File too small to contain a valid header".into());
         }
 
-        // 2. Parsear e validar header
+        // 2. Parse and validate header
         let header = FileHeader::from_bytes(&file_data[..FileHeader::SIZE])?;
 
-        // 3. Extrair payload comprimido
+        // 3. Extract compressed payload
         let payload = &file_data[FileHeader::SIZE..];
 
-        // 4. Descomprimir
+        // 4. Decompress
         let raw_bytes = match header.compression_type {
             CompressionType::Uncompressed => payload.to_vec(),
             CompressionType::Zstd => {
@@ -1031,16 +1045,16 @@ impl MemoryGraphEngine {
             }
         };
 
-        // Validar tamanho descomprimido
+        // Validate uncompressed size
         if raw_bytes.len() as u64 != header.uncompressed_size {
             return Err(format!(
-                "Tamanho descomprimido diverge: esperado {} bytes, obtido {}",
+                "Uncompressed size mismatch: expected {} bytes, got {}",
                 header.uncompressed_size,
                 raw_bytes.len()
             ));
         }
 
-        // 5. Deserializar o grafo com suporte à versão do header
+        // 5. Deserialize graph with header version support
         Self::deserialize_from_bytes_version(&raw_bytes, cache_capacity, header.version)
     }
 
@@ -1099,17 +1113,32 @@ impl MemoryGraphEngine {
         }
     }
 
-    /// Removes a node and all connecting edges
+    /// Removes a node and all connecting edges, pruning target nodes that become orphans
     pub fn delete_node(&mut self, id: u32) -> Result<(), String> {
         if let Some(node) = self.nodes.remove(&id) {
             self.label_index.remove(&node.label.to_lowercase());
-            self.adjacency.remove(&id);
+            let removed_edges = self.adjacency.remove(&id).unwrap_or_default();
+            let affected_target_ids: Vec<u32> = removed_edges.into_iter().map(|e| e.target_id).collect();
 
             // Remove references as target
             for edges in self.adjacency.values_mut() {
                 edges.retain(|e| e.target_id != id);
             }
             self.hot_cache.clear();
+
+            // Prune any affected target nodes that are now orphans (Attributes, Actions, Rules)
+            for t_id in affected_target_ids {
+                if let Some(t_node) = self.nodes.get(&t_id) {
+                    if (t_node.type_flag == NodeType::Attribute
+                        || t_node.type_flag == NodeType::Action
+                        || t_node.type_flag == NodeType::RuleOrAlert)
+                        && !self.has_any_connections(t_id)
+                    {
+                        let _ = self.delete_node(t_id);
+                    }
+                }
+            }
+
             let _ = self.auto_persist_default();
             Ok(())
         } else {
@@ -1132,6 +1161,75 @@ impl MemoryGraphEngine {
         false
     }
 
+    /// Consolidates duplicate nodes having the same normalized label, rewiring all edges
+    pub fn deduplicate_nodes(&mut self) -> usize {
+        let mut label_to_ids: std::collections::HashMap<String, Vec<u32>> = std::collections::HashMap::new();
+        for (id, node) in &self.nodes {
+            let norm = node.label.trim().to_lowercase();
+            label_to_ids.entry(norm).or_default().push(*id);
+        }
+
+        let mut merged_count = 0;
+        let mut to_delete = Vec::new();
+
+        for (_label, mut ids) in label_to_ids {
+            if ids.len() > 1 {
+                // Prefer the node with active connections, or lowest ID
+                ids.sort_by_key(|id| {
+                    let has_conn = self.has_any_connections(*id);
+                    (!has_conn, *id)
+                });
+
+                let canonical_id = ids[0];
+                for &dup_id in &ids[1..] {
+                    // Rewire outgoing edges from dup_id to canonical_id
+                    if let Some(dup_edges) = self.adjacency.remove(&dup_id) {
+                        for edge in dup_edges {
+                            if edge.target_id != canonical_id && edge.target_id != dup_id {
+                                let _ = self.add_edge_with_timestamp(
+                                    canonical_id,
+                                    edge.target_id,
+                                    edge.relation_type,
+                                    edge.last_accessed,
+                                );
+                            }
+                        }
+                    }
+
+                    // Rewire incoming edges pointing to dup_id to canonical_id
+                    for edges in self.adjacency.values_mut() {
+                        for edge in edges.iter_mut() {
+                            if edge.target_id == dup_id {
+                                edge.target_id = canonical_id;
+                            }
+                        }
+                    }
+
+                    to_delete.push(dup_id);
+                    merged_count += 1;
+                }
+            }
+        }
+
+        for id in to_delete {
+            self.nodes.remove(&id);
+            self.adjacency.remove(&id);
+        }
+
+        // Rebuild label_index
+        self.label_index.clear();
+        for (id, node) in &self.nodes {
+            self.label_index.insert(node.label.trim().to_lowercase(), *id);
+        }
+
+        if merged_count > 0 {
+            self.hot_cache.clear();
+            let _ = self.auto_persist_default();
+        }
+
+        merged_count
+    }
+
     /// Executes forgetting or deletion of a memory node/edge requested by AI
     pub fn apply_forget_rule(&mut self, subj: &str, prop: &str, learned: &mut Vec<String>) {
         let subj_clean = subj.trim();
@@ -1141,29 +1239,70 @@ impl MemoryGraphEngine {
             return;
         }
 
+        let strip_rule = |s: &str| -> String {
+            let low = s.to_lowercase();
+            if let Some(rest) = low.strip_prefix("rule: ") {
+                rest.trim().to_string()
+            } else if let Some(rest) = low.strip_prefix("regra: ") {
+                rest.trim().to_string()
+            } else if let Some(rest) = low.strip_prefix("rule:") {
+                rest.trim().to_string()
+            } else if let Some(rest) = low.strip_prefix("regra:") {
+                rest.trim().to_string()
+            } else {
+                low.trim().to_string()
+            }
+        };
+
         // Case 1: Subject provided and property is "*" or empty -> Remove subject node completely
         if !subj_clean.is_empty() && (prop_clean.is_empty() || prop_clean == "*") {
-            if let Some(node) = self.find_node_by_label(subj_clean) {
-                let id = node.id;
+            let subj_lower = subj_clean.to_lowercase();
+            let subj_stripped = strip_rule(&subj_clean);
+
+            let matching_ids: Vec<u32> = self.nodes
+                .iter()
+                .filter(|(_, n)| {
+                    let n_low = n.label.to_lowercase();
+                    n_low == subj_lower || strip_rule(&n.label) == subj_stripped
+                })
+                .map(|(id, _)| *id)
+                .collect();
+
+            for id in matching_ids {
+                let lbl = self.nodes.get(&id).map(|n| n.label.clone()).unwrap_or_default();
                 let _ = self.delete_node(id);
-                learned.push(format!("🗑️ [FORGOTTEN ENTITY]: {}", subj_clean));
+                learned.push(format!("🗑️ [FORGOTTEN ENTITY]: {}", lbl));
             }
             return;
         }
 
-        // Case 2: Both subject and property provided -> Remove edge from subject to matching property
+        // Case 2: Both subject and property provided -> Remove edge between subject and property (bidirectional)
         if !subj_clean.is_empty() && !prop_clean.is_empty() {
-            if let Some(subj_node) = self.find_node_by_label(subj_clean) {
-                let subj_id = subj_node.id;
-                let prop_lower = prop_clean.to_lowercase();
-                let mut removed_target_ids = Vec::new();
+            let subj_lower = subj_clean.to_lowercase();
+            let prop_lower = prop_clean.to_lowercase();
+            let prop_stripped = strip_rule(&prop_clean);
 
+            let subj_ids: Vec<u32> = self.nodes
+                .iter()
+                .filter(|(_, n)| n.label.to_lowercase() == subj_lower)
+                .map(|(id, _)| *id)
+                .collect();
+
+            let mut removed_endpoint_ids = Vec::new();
+
+            for subj_id in subj_ids {
+                // Outgoing edges: subj_id -> target
                 if let Some(edges) = self.adjacency.get_mut(&subj_id) {
                     edges.retain(|e| {
                         if let Some(t_node) = self.nodes.get(&e.target_id) {
                             let t_lower = t_node.label.to_lowercase();
-                            if t_lower == prop_lower || t_lower.contains(&prop_lower) || prop_lower.contains(&t_lower) {
-                                removed_target_ids.push(e.target_id);
+                            let t_stripped = strip_rule(&t_node.label);
+                            if t_lower == prop_lower
+                                || t_stripped == prop_stripped
+                                || t_lower.contains(&prop_lower)
+                                || prop_lower.contains(&t_lower)
+                            {
+                                removed_endpoint_ids.push(e.target_id);
                                 return false;
                             }
                         }
@@ -1171,16 +1310,43 @@ impl MemoryGraphEngine {
                     });
                 }
 
-                for t_id in removed_target_ids {
-                    let t_label = self.nodes.get(&t_id).map(|n| n.label.clone()).unwrap_or_default();
-                    learned.push(format!("🗑️ [FORGOTTEN MEMORY]: {} -> {}", subj_clean, t_label));
-                    // If target node has no remaining connections, prune orphan node
-                    if !self.has_any_connections(t_id) {
-                        let _ = self.delete_node(t_id);
+                // Inverted edges: src -> subj_id
+                for (src_id, edges) in self.adjacency.iter_mut() {
+                    if *src_id != subj_id {
+                        if let Some(src_node) = self.nodes.get(src_id) {
+                            let src_lower = src_node.label.to_lowercase();
+                            let src_stripped = strip_rule(&src_node.label);
+                            if src_lower == prop_lower
+                                || src_stripped == prop_stripped
+                                || src_lower.contains(&prop_lower)
+                                || prop_lower.contains(&src_lower)
+                            {
+                                let before_len = edges.len();
+                                edges.retain(|e| e.target_id != subj_id);
+                                if edges.len() < before_len {
+                                    removed_endpoint_ids.push(*src_id);
+                                }
+                            }
+                        }
                     }
                 }
-                return;
             }
+
+            for ep_id in removed_endpoint_ids {
+                let ep_label = self.nodes.get(&ep_id).map(|n| n.label.clone()).unwrap_or_default();
+                learned.push(format!("🗑️ [FORGOTTEN MEMORY]: {} -> {}", subj_clean, ep_label));
+                // If endpoint node is an attribute, action, or rule and has no remaining connections, prune orphan
+                if let Some(ep_node) = self.nodes.get(&ep_id) {
+                    if (ep_node.type_flag == NodeType::Attribute
+                        || ep_node.type_flag == NodeType::Action
+                        || ep_node.type_flag == NodeType::RuleOrAlert)
+                        && !self.has_any_connections(ep_id)
+                    {
+                        let _ = self.delete_node(ep_id);
+                    }
+                }
+            }
+            return;
         }
 
         // Case 3: Only property provided -> Remove nodes whose label matches/contains property
@@ -1299,7 +1465,7 @@ impl MemoryGraphEngine {
         md
     }
 
-    /// Exporta o grafo completo em formato JSON identado
+    /// Exports the complete graph in indented JSON format
     pub fn export_graph_json(&self) -> Result<String, String> {
         let full = self.get_full_graph();
         serde_json::to_string_pretty(&full).map_err(|e| format!("Error serializing JSON: {}", e))
@@ -1341,7 +1507,7 @@ impl MemoryGraphEngine {
         Ok(root)
     }
 
-    /// Caminho padrão para o arquivo legado .atena
+    /// Default path for legacy .atena file
     pub fn default_memory_file_path() -> std::path::PathBuf {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
@@ -1396,7 +1562,7 @@ impl MemoryGraphEngine {
 
         let text_trimmed = text.trim();
         if text_trimmed.is_empty() {
-            return Err("Texto vazio para evento de vigília".into());
+            return Err("Empty text for wakefulness event".into());
         }
 
         // Biological Valence Heuristic Detection
@@ -1495,7 +1661,7 @@ impl MemoryGraphEngine {
         Ok(())
     }
 
-    /// Executa o Ciclo de Sono e Poda Sináptica (Sleep Consolidation & Pruning)
+    /// Executes Sleep Consolidation and Synaptic Pruning
     pub fn run_sleep_cycle(&mut self) -> SleepConsolidationReport {
         let events = Self::load_vigilia_buffer();
         let now = Self::current_timestamp();
@@ -1514,7 +1680,7 @@ impl MemoryGraphEngine {
         };
 
         if events.is_empty() {
-            report.details.push("Nenhum evento no Hipocampo para consolidação. Aplicando decaimento natural...".to_string());
+            report.details.push("No events in Hippocampus for consolidation. Applying natural decay...".to_string());
             report.synapses_pruned = self.prune_weak_synapses(0.20);
             let _ = self.auto_persist_default();
             return report;
@@ -1547,27 +1713,27 @@ impl MemoryGraphEngine {
                 continue;
             }
 
-            // 2. Processamento por Valência Biológica
+            // 2. Biological Valence Processing
             if evt.valence > 0 {
                 report.positive_count += 1;
                 let learned = self.learn_from_text(txt);
                 report.facts_consolidated += learned.len();
 
                 for item in &learned {
-                    report.details.push(format!("💚 [RECOMPENSA] Consolidado: {}", item));
+                    report.details.push(format!("💚 [REWARD] Consolidated: {}", item));
                 }
                 report.synapses_reinforced += 1;
             } else if evt.valence < 0 {
                 report.negative_count += 1;
                 let rule_label = if txt.len() > 60 {
-                    format!("Evitar: {}", &txt[..57])
+                    format!("Avoid: {}", &txt[..57])
                 } else {
-                    format!("Evitar: {}", txt)
+                    format!("Avoid: {}", txt)
                 };
 
-                let rule_id = self.add_node_with_valence(NodeType::RuleOrAlert, &rule_label, -1);
+                let rule_id = self.get_or_create_node_with_valence(NodeType::RuleOrAlert, &rule_label, -1);
                 report.rules_created += 1;
-                report.details.push(format!("⚠️ [SALVAGUARDA] Regra inibitória criada: {}", rule_label));
+                report.details.push(format!("⚠️ [SAFEGUARD] Inhibitory rule created: {}", rule_label));
 
                 if let Some(atena_node) = self.find_node_by_label("Atena") {
                     let atena_id = atena_node.id;
@@ -1578,7 +1744,7 @@ impl MemoryGraphEngine {
                 if !learned.is_empty() {
                     report.facts_consolidated += learned.len();
                     for item in &learned {
-                        report.details.push(format!("🧠 [FATO] Consolidado: {}", item));
+                        report.details.push(format!("🧠 [FACT] Consolidated: {}", item));
                     }
                 }
             }
@@ -1587,7 +1753,7 @@ impl MemoryGraphEngine {
         // 3. Active Synaptic Pruning (Decay and removal of weak edges)
         self.apply_decay(0.05);
         report.synapses_pruned = self.prune_weak_synapses(0.20);
-        report.details.push(format!("✂️ [PODA] {} sinapses em desuso podadas com sucesso", report.synapses_pruned));
+        report.details.push(format!("✂️ [PRUNING] {} obsolete synapses pruned successfully", report.synapses_pruned));
 
         // 4. Save modular brain and clear consolidated wakefulness buffer
         let _ = self.auto_persist_default();
@@ -1640,7 +1806,7 @@ impl MemoryGraphEngine {
             let _ = self.delete_node(id);
         }
         if corrupted_removed > 0 {
-            details.push(format!("🧹 [LIMPEZA]: {} nós corrompidos ou fragmentados foram purgados", corrupted_removed));
+            details.push(format!("🧹 [CLEANUP]: {} corrupted or fragmented nodes were purged", corrupted_removed));
         }
 
         // 2. Edge / Synapse Deduplication
@@ -1655,17 +1821,17 @@ impl MemoryGraphEngine {
             duplicates_removed += before_len - edges.len();
         }
         if duplicates_removed > 0 {
-            details.push(format!("🔗 [DESDUPLICAÇÃO]: {} conexões duplicadas unificadas", duplicates_removed));
+            details.push(format!("🔗 [DEDUPLICATION]: {} duplicate connections unified", duplicates_removed));
         }
 
         // 3. Natural Decay & Pruning of Weak Synapses
         self.apply_decay(0.05);
         let synapses_pruned = self.prune_weak_synapses(0.20);
         if synapses_pruned > 0 {
-            details.push(format!("✂️ [PODA SINÁPTICA]: {} conexões fracas ou em desuso foram podadas", synapses_pruned));
+            details.push(format!("✂️ [SYNAPTIC PRUNING]: {} weak or unused connections were pruned", synapses_pruned));
         }
 
-        // 4. Pruning of Orphan / Isolated Nodes (Attributes without connections)
+        // 4. Pruning of Orphan / Isolated Nodes (Attributes, Actions, and Rules without connections)
         let mut connected_node_ids = std::collections::HashSet::new();
         for (src_id, edges) in &self.adjacency {
             if !edges.is_empty() {
@@ -1680,7 +1846,10 @@ impl MemoryGraphEngine {
             .nodes
             .iter()
             .filter(|(id, n)| {
-                !connected_node_ids.contains(id) && (n.type_flag == NodeType::Attribute || n.type_flag == NodeType::Action)
+                !connected_node_ids.contains(id)
+                    && (n.type_flag == NodeType::Attribute
+                        || n.type_flag == NodeType::Action
+                        || n.type_flag == NodeType::RuleOrAlert)
             })
             .map(|(id, _)| *id)
             .collect();
@@ -1690,7 +1859,13 @@ impl MemoryGraphEngine {
             let _ = self.delete_node(id);
         }
         if orphan_count > 0 {
-            details.push(format!("🍂 [PODA DE ÓRFÃOS]: {} nós de atributos desconectados foram removidos", orphan_count));
+            details.push(format!("🍂 [ORPHAN PRUNING]: {} disconnected nodes were removed", orphan_count));
+        }
+
+        // 4.1 Node Deduplication (Consolidate identical nodes)
+        let nodes_merged = self.deduplicate_nodes();
+        if nodes_merged > 0 {
+            details.push(format!("🧬 [DEDUPLICATION]: {} duplicate nodes were unified", nodes_merged));
         }
 
         // 5. Weight Normalization
@@ -1700,14 +1875,14 @@ impl MemoryGraphEngine {
             }
         }
 
-        // 6. Persistência Imediata no Disco Modular
+        // 6. Immediate Persistence to Modular Disk
         let _ = self.auto_persist_default();
         let _ = Self::clear_vigilia_buffer();
 
         let nodes_after = self.nodes.len();
         let edges_after = self.edge_count();
 
-        details.push(format!("✨ [STATUS FINAL]: Grafo estabilizado com {} nós e {} conexões ativas", nodes_after, edges_after));
+        details.push(format!("✨ [FINAL STATUS]: Graph stabilized with {} nodes and {} active connections", nodes_after, edges_after));
 
         GraphOptimizationReport {
             timestamp: now,
@@ -1723,7 +1898,7 @@ impl MemoryGraphEngine {
         }
     }
 
-    /// Aplica as decisões cognitivas tomadas pela IA no Ciclo de Sono
+    /// Applies cognitive decisions made by AI in the Sleep Cycle
     pub fn apply_ai_sleep_consolidation(
         &mut self,
         events: &[VigiliaEvent],
@@ -1743,7 +1918,7 @@ impl MemoryGraphEngine {
             details: Vec::new(),
         };
 
-        // Tentar extrair o bloco JSON da resposta da IA
+        // Try to extract JSON block from AI response
         let json_str = if let Some(start) = ai_response.find("```json") {
             let rest = &ai_response[start + 7..];
             if let Some(end) = rest.find("```") {
@@ -1762,17 +1937,17 @@ impl MemoryGraphEngine {
         };
 
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
-            // 1. Processar ruídos descartados pela IA
+            // 1. Process noise discarded by AI
             if let Some(noises) = val.get("noise_discarded").and_then(|v| v.as_array()) {
                 report.noise_discarded += noises.len();
                 for n in noises {
                     if let Some(s) = n.as_str() {
-                        report.details.push(format!("🗑️ [IA DESCARTOR RUÍDO]: {}", s));
+                        report.details.push(format!("🗑️ [NOISE DISCARDED]: {}", s));
                     }
                 }
             }
 
-            // 2. Processar fatos extraídos pela IA
+            // 2. Process facts extracted by AI
             if let Some(facts) = val.get("facts").and_then(|v| v.as_array()) {
                 for f in facts {
                     let raw_subj = f.get("subject").and_then(|v| v.as_str()).unwrap_or("").trim();
@@ -1803,9 +1978,9 @@ impl MemoryGraphEngine {
                             report.positive_count += 1;
                             let _ = self.reinforce_edge(subj_id, attr_id);
                             report.synapses_reinforced += 1;
-                            report.details.push(format!("💚 [IA CONSOLIDOU & REFORÇOU]: {} -> {}", subj, prop));
+                            report.details.push(format!("💚 [CONSOLIDATED & REINFORCED]: {} -> {}", subj, prop));
                         } else {
-                            report.details.push(format!("🧠 [IA CONSOLIDOU FATO]: {} -> {}", subj, prop));
+                            report.details.push(format!("🧠 [CONSOLIDATED FACT]: {} -> {}", subj, prop));
                         }
                     }
                 }
@@ -1819,8 +1994,8 @@ impl MemoryGraphEngine {
                     let rule_text = Self::sanitize_markdown_text(raw_rule);
 
                     if !rule_text.is_empty() && rule_text.len() >= 3 {
-                        let label = format!("Regra: {}", rule_text);
-                        let rule_id = self.add_node_with_valence(NodeType::RuleOrAlert, &label, -1);
+                        let label = format!("Rule: {}", rule_text);
+                        let rule_id = self.get_or_create_node_with_valence(NodeType::RuleOrAlert, &label, -1);
                         report.rules_created += 1;
                         report.negative_count += 1;
 
@@ -1828,20 +2003,20 @@ impl MemoryGraphEngine {
                             let _ = self.add_edge(atena_node.id, rule_id, RelationType::AvoidAction);
                         }
 
-                        report.details.push(format!("⚠️ [IA CRIOU REGRA DE PROTEÇÃO]: {} ({})", rule_text, reason));
+                        report.details.push(format!("⚠️ [SAFEGUARD CREATED]: {} ({})", rule_text, reason));
                     }
                 }
             }
         } else {
-            report.details.push("⚠️ Formato de resposta da IA não estruturado, aplicando rotina neural padrão...".to_string());
+            report.details.push("⚠️ Unstructured AI response format, applying standard neural routine...".to_string());
             let fallback = self.run_sleep_cycle();
             return fallback;
         }
 
-        // 4. Poda Sináptica Ativa (Decaimento e remoção de arestas fracas)
+        // 4. Active Synaptic Pruning (Decay and removal of weak edges)
         self.apply_decay(0.05);
         report.synapses_pruned = self.prune_weak_synapses(0.20);
-        report.details.push(format!("✂️ [PODA SINÁPTICA]: {} arestas em desuso foram podadas", report.synapses_pruned));
+        report.details.push(format!("✂️ [SYNAPTIC PRUNING]: {} unused edges were pruned", report.synapses_pruned));
 
         // 5. Save modular brain and clear consolidated wakefulness buffer
         let _ = self.auto_persist_default();
@@ -2127,7 +2302,7 @@ impl MemoryGraphEngine {
             let matches_token = search_tokens.iter().any(|token| {
                 *token == lbl_norm
                     || (lbl_norm.len() >= 3 && lbl_norm.contains(token))
-                    || (token.len() >= 4 && token.contains(&lbl_norm))
+                    || (token.len() >= 4 && lbl_norm.len() >= 4 && token.contains(&lbl_norm))
             });
 
             if matches_query || matches_token {
@@ -2185,13 +2360,49 @@ impl MemoryGraphEngine {
             return None;
         }
 
-        // Ordenar caminhos por peso
+        // Deduplicate paths by sequence of node labels and relations
+        let mut seen_paths = std::collections::HashSet::new();
+        all_paths.retain(|p| {
+            let key = p.steps.iter().map(|s| format!("{}:{:?}", s.node_label, s.relation)).collect::<Vec<_>>().join("->");
+            seen_paths.insert(key)
+        });
+
+        // Query relevance: score paths that explicitly contain query search tokens
+        let path_query_relevance = |p: &AssociationPath| -> usize {
+            let mut score = 0;
+            for step in &p.steps {
+                let norm = Self::normalize_for_search(&step.node_label);
+                for token in &search_tokens {
+                    if norm == *token {
+                        score += 3;
+                    } else if norm.contains(token) {
+                        score += 2;
+                    }
+                }
+            }
+            score
+        };
+
+        // Sort paths by: 1) query relevance, 2) rules/avoid actions, 3) total weight, 4) shorter length
         all_paths.sort_by(|a, b| {
+            let a_rel = path_query_relevance(a);
+            let b_rel = path_query_relevance(b);
+            if a_rel != b_rel {
+                return b_rel.cmp(&a_rel);
+            }
+
+            let a_has_rule = a.steps.iter().any(|s| s.relation == Some(RelationType::AvoidAction) || s.node_type == NodeType::RuleOrAlert);
+            let b_has_rule = b.steps.iter().any(|s| s.relation == Some(RelationType::AvoidAction) || s.node_type == NodeType::RuleOrAlert);
+            if a_has_rule != b_has_rule {
+                return b_has_rule.cmp(&a_has_rule);
+            }
+
             b.total_weight
                 .partial_cmp(&a.total_weight)
                 .unwrap_or(Ordering::Equal)
+                .then_with(|| a.steps.len().cmp(&b.steps.len()))
         });
-        all_paths.truncate(8); // Limitar aos 8 caminhos mais fortes para não estourar tokens
+        all_paths.truncate(8); // Limit to top 8 paths to prevent token overflow
 
         Some(Self::build_llm_context(&all_paths))
     }
@@ -2243,9 +2454,9 @@ impl MemoryGraphEngine {
         Some(Self::build_llm_context(&all_paths))
     }
 
-    /// Retorna um resumo formatado dos registros mais recentes e ativos no grafo cerebral.
-    /// Permite que a IA veja o estado real atual da sua memória para evitar contradições,
-    /// duplicidades ou dados errados.
+    /// Returns a formatted summary of the most recent and active records in the brain graph.
+    /// Allows the AI to inspect current memory state to prevent contradictions,
+    /// duplications, or stale data.
     pub fn get_recent_memory_records(&self, limit: usize) -> Option<String> {
         if self.nodes.is_empty() {
             return None;
@@ -2293,13 +2504,13 @@ impl MemoryGraphEngine {
     // Runtime Autonomous Cognitive Memory
     // =========================================================================
 
-    /// Normaliza aspas tipográficas (smart quotes) para aspas ASCII simples
+    /// Normalizes typographic smart quotes to ASCII standard quotes
     pub fn normalize_smart_quotes(text: &str) -> String {
         text.replace(['“', '”', '„', '‟', '«', '»'], "\"")
             .replace(['‘', '’', '‚', '‛'], "'")
     }
 
-    /// Extrai um atributo com segurança de uma tag normalizada (ex: sujeito="...", propriedade="...")
+    /// Safely extracts an attribute from a normalized tag (e.g. subject="...", property="...")
     pub fn extract_attribute_safe(tag_str: &str, attr_names: &[&str]) -> Option<String> {
         let tag_normalized = Self::normalize_smart_quotes(tag_str);
 
@@ -2309,7 +2520,7 @@ impl MemoryGraphEngine {
                 let actual_pos = search_from + pos;
                 search_from = actual_pos + name.len();
 
-                // Garante que é uma palavra inteira (precedida por espaço, '<', etc.)
+                // Ensures it is a whole word (preceded by whitespace, '<', etc.)
                 if actual_pos > 0 {
                     let prev = tag_normalized[..actual_pos].chars().last().unwrap_or(' ');
                     if !prev.is_whitespace() && prev != '<' {
@@ -2358,7 +2569,7 @@ impl MemoryGraphEngine {
         None
     }
 
-    /// Removes invalid or corrupted nodes generated by malformed tags
+    /// Removes invalid or corrupted nodes generated by malformed tags, deduplicates nodes, and prunes orphans
     pub fn scrub_corrupted_nodes(&mut self) {
         let bad_node_ids: Vec<u32> = self
             .nodes
@@ -2378,11 +2589,50 @@ impl MemoryGraphEngine {
             .map(|(id, _)| *id)
             .collect();
 
+        let mut changed = false;
         if !bad_node_ids.is_empty() {
             log::info!("Scrubbing {} corrupted nodes from memory graph", bad_node_ids.len());
             for id in bad_node_ids {
                 let _ = self.delete_node(id);
             }
+            changed = true;
+        }
+
+        // Deduplicate nodes with identical labels
+        let merged = self.deduplicate_nodes();
+        if merged > 0 {
+            log::info!("Deduplicated {} duplicate nodes during memory scrub", merged);
+            changed = true;
+        }
+
+        // Prune orphan rules, attributes, and actions with 0 connections
+        let orphan_ids: Vec<u32> = self
+            .nodes
+            .iter()
+            .filter(|(id, n)| {
+                (n.type_flag == NodeType::RuleOrAlert
+                    || n.type_flag == NodeType::Attribute
+                    || n.type_flag == NodeType::Action)
+                    && !self.has_any_connections(**id)
+            })
+            .map(|(id, _)| *id)
+            .collect();
+
+        if !orphan_ids.is_empty() {
+            log::info!("Pruning {} disconnected orphan nodes during memory scrub", orphan_ids.len());
+            for id in orphan_ids {
+                let _ = self.delete_node(id);
+            }
+            changed = true;
+        }
+
+        // Rebuild and synchronize label_index
+        self.label_index.clear();
+        for (id, node) in &self.nodes {
+            self.label_index.insert(node.label.trim().to_lowercase(), *id);
+        }
+
+        if changed {
             let _ = self.auto_persist_default();
         }
     }
@@ -2536,7 +2786,7 @@ impl MemoryGraphEngine {
         }
     }
 
-    /// Inserts an inhibitory rule fact into the associative memory graph
+    /// Inserts an inhibitory rule fact into the associative memory graph, sharing canonical rule nodes
     pub fn insert_rule_fact(
         &mut self,
         subj: &str,
@@ -2545,12 +2795,16 @@ impl MemoryGraphEngine {
         memory_ts: u64,
     ) {
         let subj_id = self.get_or_create_node_with_valence_and_session(NodeType::Object, subj, 0, raw_session);
-        let rule_label = if prop.starts_with("Regra:") || prop.starts_with("Rule:") {
-            prop.to_string()
+        let prop_trimmed = prop.trim();
+        let rule_content = if let Some(rest) = prop_trimmed.strip_prefix("Rule:").or_else(|| prop_trimmed.strip_prefix("rule:")) {
+            rest.trim()
+        } else if let Some(rest) = prop_trimmed.strip_prefix("Regra:").or_else(|| prop_trimmed.strip_prefix("regra:")) {
+            rest.trim()
         } else {
-            format!("Rule: {}", prop)
+            prop_trimmed
         };
-        let rule_id = self.add_node_with_valence_and_session(NodeType::RuleOrAlert, &rule_label, -1, raw_session.map(|s| s.to_string()));
+        let rule_label = format!("Rule: {}", rule_content);
+        let rule_id = self.get_or_create_node_with_valence_and_session(NodeType::RuleOrAlert, &rule_label, -1, raw_session);
         let _ = self.add_edge_with_timestamp(subj_id, rule_id, RelationType::AvoidAction, memory_ts);
         if let Some(atena_node) = self.find_node_by_label("Atena") {
             let _ = self.add_edge_with_timestamp(atena_node.id, rule_id, RelationType::AvoidAction, memory_ts);
@@ -2732,17 +2986,76 @@ impl MemoryGraphEngine {
         resolved
     }
 
+    /// Masks contents of markdown code blocks (```...```) and inline code (`...`)
+    /// with spaces so memory tags inside code snippets are never parsed or executed.
+    pub fn mask_markdown_code_spans(input: &str) -> String {
+        let bytes = input.as_bytes().to_vec();
+        let mut masked = bytes.clone();
+        let len = bytes.len();
+        let mut i = 0;
+
+        while i < len {
+            // Check for triple backticks ```
+            if i + 2 < len && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+                let start = i;
+                i += 3;
+                let mut found_end = false;
+                while i + 2 < len {
+                    if bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+                        i += 3;
+                        found_end = true;
+                        break;
+                    }
+                    i += 1;
+                }
+                let end = if found_end { i } else { len };
+                for b in &mut masked[start..end] {
+                    if *b != b'\n' {
+                        *b = b' ';
+                    }
+                }
+            } else if bytes[i] == b'`' {
+                // Inline backtick
+                let start = i;
+                i += 1;
+                let mut found_end = false;
+                while i < len {
+                    if bytes[i] == b'`' {
+                        i += 1;
+                        found_end = true;
+                        break;
+                    } else if bytes[i] == b'\n' {
+                        // Inline code cannot span multiple lines
+                        break;
+                    }
+                    i += 1;
+                }
+                if found_end {
+                    for b in &mut masked[start..i] {
+                        *b = b' ';
+                    }
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        String::from_utf8(masked).unwrap_or_else(|_| input.to_string())
+    }
+
     /// Extracts and processes autonomous memory tags emitted by the AI during conversation.
     /// Returns a tuple: (clean_text_without_tags, list_of_memorized_facts).
     pub fn extract_and_apply_memory_tags(&mut self, raw_text: &str) -> (String, Vec<String>) {
         let mut learned = Vec::new();
         let normalized = Self::normalize_smart_quotes(raw_text);
+        let masked = Self::mask_markdown_code_spans(&normalized);
+        let mut tag_spans_to_strip: Vec<(usize, usize)> = Vec::new();
 
         // 1. Extract Forget / Memory Correction tags (<forget ... />, <esquecer ... />, <remover ... />)
         let forget_prefixes = ["<forget", "<esquecer", "<remover"];
         for prefix in &forget_prefixes {
             let mut search_pos = 0;
-            while let Some(start_offset) = normalized[search_pos..].find(prefix) {
+            while let Some(start_offset) = masked[search_pos..].find(prefix) {
                 let start = search_pos + start_offset;
                 let rest_from_start = &normalized[start..];
 
@@ -2756,6 +3069,7 @@ impl MemoryGraphEngine {
 
                 let tag_chunk = &rest_from_start[..tag_end_offset.min(500)];
                 search_pos = start + tag_chunk.len().max(prefix.len());
+                tag_spans_to_strip.push((start, start + tag_end_offset.min(500)));
 
                 let raw_subj = Self::extract_attribute_safe(tag_chunk, &["sujeito", "subject", "entidade", "entity"]).unwrap_or_default();
                 let raw_prop = Self::extract_attribute_safe(tag_chunk, &["propriedade", "property", "fato", "fact", "alvo", "target"]).unwrap_or_default();
@@ -2771,7 +3085,7 @@ impl MemoryGraphEngine {
         let mem_prefixes = ["<memoria", "<memory", "<memorizar"];
         for prefix in &mem_prefixes {
             let mut search_pos = 0;
-            while let Some(start_offset) = normalized[search_pos..].find(prefix) {
+            while let Some(start_offset) = masked[search_pos..].find(prefix) {
                 let start = search_pos + start_offset;
                 let rest_from_start = &normalized[start..];
 
@@ -2785,6 +3099,7 @@ impl MemoryGraphEngine {
 
                 let tag_chunk = &rest_from_start[..tag_end_offset.min(500)];
                 search_pos = start + tag_chunk.len().max(prefix.len());
+                tag_spans_to_strip.push((start, start + tag_end_offset.min(500)));
 
                 let raw_subj = Self::extract_attribute_safe(tag_chunk, &["sujeito", "subject", "entidade", "entity"]).unwrap_or_default();
                 let raw_prop = Self::extract_attribute_safe(tag_chunk, &["propriedade", "property", "fato", "fact"]).unwrap_or_default();
@@ -2797,22 +3112,8 @@ impl MemoryGraphEngine {
 
                 if !subj.is_empty() && !prop.is_empty() {
                     let mut valence: i8 = raw_valence.parse().unwrap_or(0);
-                    let mut node_type = match raw_type.to_lowercase().as_str() {
-                        "container" | "local" | "localizacao" => NodeType::Container,
-                        "ruleoralert" | "regra" | "regrainibitoria" | "alerta" | "inhibition" => NodeType::RuleOrAlert,
-                        _ => NodeType::Attribute,
-                    };
 
-                    // Guardrail: Inhibitory rules always have negative valence (-1)
-                    if node_type == NodeType::RuleOrAlert && valence >= 0 {
-                        valence = -1;
-                    }
-
-                    if valence < 0 {
-                        node_type = NodeType::RuleOrAlert;
-                    }
-
-                    // Positive events / milestones guardrail: never treat weddings, birthdays as negative
+                    // Guardrail: Never treat weddings, birthdays, positive milestones as negative rules
                     let is_event_or_positive = {
                         let combined = format!("{} {}", subj, prop).to_lowercase();
                         combined.contains("casamento")
@@ -2827,28 +3128,28 @@ impl MemoryGraphEngine {
                             || combined.contains("date:")
                     };
 
-                    if node_type == NodeType::RuleOrAlert && is_event_or_positive {
-                        node_type = NodeType::Attribute;
-                        if valence < 1 {
-                            valence = 1;
-                        }
+                    if is_event_or_positive && valence <= 0 {
+                        valence = 1;
                     }
+
+                    let is_rule = (valence < 0 || raw_type.eq_ignore_ascii_case("ruleoralert") || raw_type.eq_ignore_ascii_case("regra")) && !is_event_or_positive;
 
                     let memory_ts = Self::current_timestamp();
 
-                    if node_type == NodeType::RuleOrAlert || valence == -1 {
-                        let rule_label = if prop.starts_with("Regra:") || prop.starts_with("Rule:") {
+                    if is_rule {
+                        let rule_label = if prop.to_lowercase().starts_with("rule:") || prop.to_lowercase().starts_with("regra:") {
                             prop.clone()
                         } else {
                             format!("Rule: {}", prop)
                         };
                         self.insert_rule_fact(&subj, &rule_label, raw_session.as_deref(), memory_ts);
                         learned.push(format!("⚠️ [SAVED INHIBITORY RULE]: {} -> {}", subj, rule_label));
-                    } else if node_type == NodeType::Container {
+                    } else if raw_type.eq_ignore_ascii_case("container") || raw_type.eq_ignore_ascii_case("local") {
                         self.insert_container_fact(&subj, &prop, raw_session.as_deref(), memory_ts);
-                        learned.push(format!("📍 [SAVED LOCATION]: {} in {}", subj, prop));
+                        learned.push(format!("📍 [SAVED LOCATION]: {} located in {}", subj, prop));
                     } else {
                         self.insert_declarative_fact(&subj, &prop, valence, raw_session.as_deref(), memory_ts);
+
                         if valence > 0 {
                             learned.push(format!("💚 [SAVED & REINFORCED MEMORY]: {} -> {}", subj, prop));
                         } else {
@@ -2863,7 +3164,7 @@ impl MemoryGraphEngine {
         let skill_prefixes = ["<habilidade", "<skill"];
         for prefix in &skill_prefixes {
             let mut search_pos = 0;
-            while let Some(start_offset) = normalized[search_pos..].find(prefix) {
+            while let Some(start_offset) = masked[search_pos..].find(prefix) {
                 let start = search_pos + start_offset;
                 let rest_from_start = &normalized[start..];
 
@@ -2877,6 +3178,7 @@ impl MemoryGraphEngine {
 
                 let tag_chunk = &rest_from_start[..tag_end_offset.min(800)];
                 search_pos = start + tag_chunk.len().max(prefix.len());
+                tag_spans_to_strip.push((start, start + tag_end_offset.min(800)));
 
                 let raw_name = Self::extract_attribute_safe(tag_chunk, &["nome", "name", "titulo", "title"]).unwrap_or_default();
                 let raw_desc = Self::extract_attribute_safe(tag_chunk, &["descricao", "description", "desc"]).unwrap_or_default();
@@ -2910,19 +3212,16 @@ impl MemoryGraphEngine {
             }
         }
 
-        // 4. Full cleanup of all memory/forget tags from returned text
+        // 4. Strip only extracted tags that appeared outside code blocks
         let mut clean_text = raw_text.to_string();
-        for tag_prefix in &["<memoria", "<memory", "<memorizar", "<habilidade", "<skill", "<forget", "<esquecer", "<remover"] {
-            while let Some(start) = clean_text.to_lowercase().find(tag_prefix) {
-                let slice = &clean_text[start..];
-                let remove_len = if let Some(end) = slice.find("/>") {
-                    end + 2
-                } else if let Some(end) = slice.find('>') {
-                    end + 1
-                } else {
-                    slice.len()
-                };
-                clean_text.replace_range(start..start + remove_len, "");
+        tag_spans_to_strip.sort_by(|a, b| b.0.cmp(&a.0));
+        tag_spans_to_strip.dedup();
+        for (start, end) in tag_spans_to_strip {
+            if start < clean_text.len() {
+                let actual_end = end.min(clean_text.len());
+                if start < actual_end {
+                    clean_text.replace_range(start..actual_end, "");
+                }
             }
         }
 
@@ -4255,7 +4554,7 @@ r#"# Cognitive Episode #{new_index}
     }
 
     // =========================================================================
-    // Aprendizado Semântico / Heurístico a partir de Diálogos
+    // Semantic / Heuristic Learning from Dialogue
     // =========================================================================
 
     /// Analyzes text for facts and entities, adding to global graph and persisting
@@ -4279,7 +4578,7 @@ r#"# Cognitive Episode #{new_index}
             learned.append(&mut tag_learned);
         }
 
-        // 1. Identificar ou recuperar o usuário principal (âncora pessoal)
+        // 1. Identify or retrieve primary user (personal anchor)
         let mut user_entity: Option<String> = None;
         let lower_full = clean.to_lowercase();
 
@@ -4300,7 +4599,7 @@ r#"# Cognitive Episode #{new_index}
                     let cap_name = first_word.to_string();
                     user_entity = Some(cap_name.clone());
                     let node_id = self.get_or_create_node(NodeType::Object, &cap_name);
-                    learned.push(format!("Entidade identificada: {}", cap_name));
+                    learned.push(format!("Identified entity: {}", cap_name));
 
                     let attr_id = self.get_or_create_node(NodeType::Attribute, &format!("Name: {}", cap_name));
                     let _ = self.add_edge(node_id, attr_id, RelationType::HasProperty);
@@ -4323,7 +4622,7 @@ r#"# Cognitive Episode #{new_index}
             .filter(|s| !s.is_empty())
             .collect();
 
-        // Rastrear última entidade mencionada (para pronomes "ela", "ele")
+        // Track last mentioned entity (for pronouns "she", "he")
         let mut last_female_entity: Option<String> = None;
         let mut last_male_entity: Option<String> = None;
 
@@ -4331,7 +4630,7 @@ r#"# Cognitive Episode #{new_index}
         for clause in &clauses {
             let cl_lower = clause.to_lowercase();
 
-            // Padrão: "[NOME] e/é/eh minha esposa/mulher..." ou "minha esposa e/é/eh [NOME]"
+            // Pattern: "[NAME] is my wife/woman..." or "my wife is [NAME]"
             for rel_word in &["esposa", "mulher", "namorada", "noiva", "mãe", "mae", "irmã", "irma", "amiga", "sócia", "socia"] {
                 if cl_lower.contains(rel_word) {
                     let parts: Vec<&str> = clause.split(',').collect();
@@ -4345,7 +4644,7 @@ r#"# Cognitive Episode #{new_index}
                                     if !name.is_empty() && name.chars().next().map_or(false, |c| c.is_uppercase()) {
                                         let node_id = self.get_or_create_node(NodeType::Object, name);
                                         last_female_entity = Some(name.to_string());
-                                        learned.push(format!("Entidade identificada: {}", name));
+                                        learned.push(format!("Identified entity: {}", name));
 
                                         let rel_name = format!("{}: {}", rel_word.to_uppercase(), name);
                                         let rel_attr = self.get_or_create_node(NodeType::Attribute, &rel_name);
@@ -4364,7 +4663,7 @@ r#"# Cognitive Episode #{new_index}
                 }
             }
 
-            // Padrão: "[NOME] e/é/eh meu marido/esposo/namorado/noivo/irmão/pai/filho/amigo/sócio"
+            // Pattern: "[NAME] is my husband/spouse/boyfriend/fiancé/brother/father/son/friend/partner"
             for rel_word in &["marido", "esposo", "namorado", "noivo", "pai", "irmão", "irmao", "filho", "amigo", "sócio", "socio"] {
                 if cl_lower.contains(rel_word) {
                     for conn in &[" e meu", " é meu", " eh meu", " e o meu", " é o meu", " eh o meu"] {
@@ -4373,7 +4672,7 @@ r#"# Cognitive Episode #{new_index}
                             if !name.is_empty() && name.chars().next().map_or(false, |c| c.is_uppercase()) {
                                 let node_id = self.get_or_create_node(NodeType::Object, name);
                                 last_male_entity = Some(name.to_string());
-                                learned.push(format!("Entidade identificada: {}", name));
+                                learned.push(format!("Identified entity: {}", name));
 
                                 let rel_name = format!("{}: {}", rel_word.to_uppercase(), name);
                                 let rel_attr = self.get_or_create_node(NodeType::Attribute, &rel_name);
@@ -4389,7 +4688,7 @@ r#"# Cognitive Episode #{new_index}
                 }
             }
 
-            // Padrão: "temos uma filha/filho [chamada/chamado/camada] [NOME]" ou "minha filha [NOME]"
+            // Pattern: "we have a daughter/son named [NAME]" or "my daughter [NAME]"
             for child_word in &["filha", "filho"] {
                 if cl_lower.contains(child_word) {
                     for call_word in &["chamada ", "chamado ", "camada ", "camado ", "de nome ", "que se chama "] {
@@ -4408,19 +4707,19 @@ r#"# Cognitive Episode #{new_index}
                                 } else {
                                     last_male_entity = Some(name.to_string());
                                 }
-                                learned.push(format!("Filho(a) identificado(a): {}", name));
+                                learned.push(format!("Identified child: {}", name));
 
                                 let rel_name = format!("{}: {}", child_word.to_uppercase(), name);
                                 let rel_attr = self.get_or_create_node(NodeType::Attribute, &rel_name);
 
-                                // Ligar ao usuário principal
+                                // Connect to primary user
                                 if let Some(ref u) = anchor_user {
                                     let u_id = self.get_or_create_node(NodeType::Object, u);
                                     let _ = self.add_edge(u_id, node_id, RelationType::HasProperty);
                                     let _ = self.add_edge(u_id, rel_attr, RelationType::HasProperty);
                                 }
 
-                                // Ligar à esposa/marido se existir
+                                // Connect to spouse if present
                                 if let Some(ref f) = last_female_entity {
                                     if f != name {
                                         let f_id = self.get_or_create_node(NodeType::Object, f);
@@ -4467,18 +4766,18 @@ r#"# Cognitive Episode #{new_index}
             if let Some(ref subj_name) = current_subject {
                 let subj_id = self.get_or_create_node(NodeType::Object, subj_name);
 
-                // Idade: "tenho 23 anos" / "tem 23 anos"
+                // Age: "tenho 23 anos" / "tem 23 anos"
                 if let Some(pos) = s_lower.find(" anos") {
                     let before = &s_lower[..pos];
                     if let Some(num_str) = before.split(|c: char| !c.is_numeric()).filter(|s| !s.is_empty()).last() {
                         let age_str = format!("{} anos", num_str);
                         let age_id = self.get_or_create_node(NodeType::Attribute, &age_str);
                         let _ = self.add_edge(subj_id, age_id, RelationType::HasProperty);
-                        learned.push(format!("{} tem a propriedade: {}", subj_name, age_str));
+                        learned.push(format!("{} has property: {}", subj_name, age_str));
                     }
                 }
 
-                // Cabelos: "cabelos castanhos", "cabelo preto", "cabelos pretos"
+                // Hair: "cabelos castanhos", "cabelo preto", "cabelos pretos"
                 if let Some(pos) = s_lower.find("cabelo") {
                     let start = if s_lower[pos..].starts_with("cabelos ") { pos + 8 } else { pos + 7 };
                     let rest = &sub[start..].trim();
@@ -4491,7 +4790,7 @@ r#"# Cognitive Episode #{new_index}
                     }
                 }
 
-                // Olhos: "olhos marrons", "olhos castanhos", "olhos marrom"
+                // Eyes: "olhos marrons", "olhos castanhos", "olhos marrom"
                 if let Some(pos) = s_lower.find("olho") {
                     if s_lower.contains("da cor do meu") {
                         let attr = "Olhos castanhos / marrons".to_string();
@@ -4511,7 +4810,7 @@ r#"# Cognitive Episode #{new_index}
                     }
                 }
 
-                // Pele: "pele parda", "cor de pele parda"
+                // Skin: "pele parda", "cor de pele parda"
                 if let Some(pos) = s_lower.find("pele ") {
                     let rest = &sub[pos + 5..].trim();
                     let tone = rest.split_whitespace().next().unwrap_or("").trim();
@@ -4523,7 +4822,7 @@ r#"# Cognitive Episode #{new_index}
                     }
                 }
 
-                // Aparelho nos dentes
+                // Braces / dental appliances
                 if s_lower.contains("aparelho") {
                     let attr = "Usa aparelho nos dentes".to_string();
                     let attr_id = self.get_or_create_node(NodeType::Attribute, &attr);
@@ -4531,7 +4830,7 @@ r#"# Cognitive Episode #{new_index}
                     learned.push(format!("{} -> {}", subj_name, attr));
                 }
 
-                // Sorriso lindo
+                // Smile
                 if s_lower.contains("sorriso lindo") || s_lower.contains("lindo sorriso") {
                     let attr = "Sorriso lindo".to_string();
                     let attr_id = self.get_or_create_node(NodeType::Attribute, &attr);
@@ -4557,7 +4856,7 @@ r#"# Cognitive Episode #{new_index}
                             let obj_id = self.get_or_create_node(NodeType::Object, obj_raw);
                             let loc_id = self.get_or_create_node(NodeType::Container, loc_raw);
                             let _ = self.add_edge(obj_id, loc_id, RelationType::LocatedIn);
-                            learned.push(format!("{} localizado em {}", obj_raw, loc_raw));
+                            learned.push(format!("{} located in {}", obj_raw, loc_raw));
                         }
                     }
                 }
@@ -4565,7 +4864,7 @@ r#"# Cognitive Episode #{new_index}
         }
 
         // 5. General Entities, Definitions, Background, Profession, Residence, and Predicates
-        // Trata: "Maria e formada", "Maria é desenvolvedora", "Maria mora em SP", "Carlos Drummond é poeta"
+        // Handles: "Maria is a graduate", "Maria is a developer", "Maria lives in SP", "Carlos Drummond is a poet"
         for clause in &clauses {
             let cl_trim = clause.trim();
             let cl_lower = cl_trim.to_lowercase();
@@ -4637,7 +4936,7 @@ r#"# Cognitive Episode #{new_index}
                 }
             }
 
-            // Título / Alcunha: "conhecido pelo título de Rei do Baião"
+            // Title / Moniker: "known as King of Baiao"
             if let Some(pos) = cl_lower.find("conhecido como ").or_else(|| cl_lower.find("título de ")) {
                 let start = if cl_lower[pos..].starts_with("conhecido como ") { pos + 15 } else { pos + 10 };
                 if start < clause.len() {
@@ -4651,16 +4950,16 @@ r#"# Cognitive Episode #{new_index}
                     if !title.is_empty() && title.len() <= 40 {
                         if let Some(ref subj) = anchor_user {
                             let subj_id = self.get_or_create_node(NodeType::Object, subj);
-                            let attr_id = self.get_or_create_node(NodeType::Attribute, &format!("Título: {}", title));
+                            let attr_id = self.get_or_create_node(NodeType::Attribute, &format!("Title: {}", title));
                             let _ = self.add_edge(subj_id, attr_id, RelationType::HasProperty);
-                            learned.push(format!("{} -> Título: {}", subj, title));
+                            learned.push(format!("{} -> Title: {}", subj, title));
                         }
                     }
                 }
             }
         }
 
-        // 6. Fallback final para fatos diretos simples sem verbo reconhecido (ex: "Maria: Engenheira", "Moro no Brasil", etc.)
+        // 6. Final fallback for simple direct facts without recognized verb (e.g. "Maria: Engineer", "I live in Brazil", etc.)
         if learned.is_empty() {
             if let Some(pos) = clean.find(':').or_else(|| clean.find(" - ")) {
                 let sep_len = if clean[pos..].starts_with(':') { 1 } else { 3 };
@@ -4697,7 +4996,7 @@ r#"# Cognitive Episode #{new_index}
             }
         }
 
-        // 7. Se houve aprendizado, persiste automaticamente em disco (.atena)
+        // 7. If learning occurred, automatically persist to disk (.atena)
         if !learned.is_empty() {
             let _ = self.auto_persist_default();
         }
@@ -4706,10 +5005,10 @@ r#"# Cognitive Episode #{new_index}
     }
 
     // =========================================================================
-    // Estatísticas
+    // Statistics
     // =========================================================================
 
-    /// Retorna estatísticas do motor para debug/monitoramento
+    /// Returns engine statistics for debugging and monitoring
     pub fn stats(&self) -> EngineStats {
         EngineStats {
             total_nodes: self.nodes.len(),

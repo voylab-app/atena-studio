@@ -161,6 +161,7 @@
           @rejectAllTools="$emit('rejectAllTools', $event)" @resendMessage="$emit('resendMessage', $event)"
           @continueGeneration="handleContinueGeneration"
           @openParams="$emit('openParams')"
+          @openEfficiencyModal="showEfficiencyModal = true"
           @toolLabelUpdated="$emit('refreshTools')"
           @deleteMessage="handleDeleteMessage(msg, index)"
           @retryLastMessage="handleRetryLastMessage" @selectTab="$emit('selectTab', $event)" />

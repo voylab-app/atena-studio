@@ -44,7 +44,9 @@ export interface ChatMessage {
   timestamp: string
   tokens_count?: number
   generation_speed_tps?: number
+  time_to_first_token_ms?: number
   is_streaming?: boolean
+  prompt_progress_pct?: number
   metrics?: GenerationMetrics | null
   [key: string]: any
 }
@@ -240,7 +242,7 @@ export interface McpToolCall {
 export interface McpServerConfig {
   id: string
   name: string
-  transport: 'stdio' | 'sse' | 'http' | string
+  transport: 'stdio' | 'sse' | 'http' | 'builtin' | string
   command?: string | null
   args?: string[] | null
   env?: Record<string, string> | null

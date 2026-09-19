@@ -87,32 +87,3 @@ fn test_autonomous_memory_updates_and_arbitrary_facts() {
     assert!(!maria_edges.iter().any(|e| e.target_id == old_date_id), "Should no longer have old date");
     assert!(maria_edges.iter().any(|e| e.target_id == gift_id), "Should have bought gift");
 }
-
-#[test]
-fn test_inspect_user_brain() {
-    let root = MemoryGraphEngine::brain_root_path();
-    let files = [
-        root.join("brain_manifest.atena"),
-        root.join("temporal").join("identidades.atena"),
-        root.join("parietal").join("associacoes_locais.atena"),
-        root.join("prefrontal").join("regras_preferencias.atena"),
-        root.join("occipital").join("formas_visuals.atena"),
-    ];
-    for f in &files {
-        if f.exists() {
-            println!("--- FILE: {} ---", f.display());
-            if let Ok(eng) = MemoryGraphEngine::load_from_compressed_binary(f, 64) {
-                for (id, node) in &eng.nodes {
-                    println!("  Node {}: {:?} (valence: {})", id, node.label, node.valence);
-                }
-                for (src, edges) in &eng.adjacency {
-                    for e in edges {
-                        let src_lbl = eng.nodes.get(src).map(|n| n.label.as_str()).unwrap_or("?");
-                        let tgt_lbl = eng.nodes.get(&e.target_id).map(|n| n.label.as_str()).unwrap_or("?");
-                        println!("    {} -> {:?} -> {}", src_lbl, e.relation_type, tgt_lbl);
-                    }
-                }
-            }
-        }
-    }
-}

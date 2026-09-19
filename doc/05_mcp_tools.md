@@ -64,16 +64,21 @@ The command accepts an optional `target_locale: Option<String>` parameter:
 
 ---
 
-## 5. Built-in Native Tools (Zero-MCP Setup)
+## 5. Built-in Native Tools and Fine-Grained Disabling (`atena_native`)
 
-In addition to external MCP servers, Atena Studio embeds first-class native tools registered under `atena_native`:
-* **`atena_web_search`**: Public web search powered by a multi-provider resilient engine (Bing, DuckDuckGo) without external binaries or API keys.
-* **`atena_fetch_webpage`**: Webpage reader converting HTML to sanitized, clean Markdown text.
+In addition to external MCP servers, Atena Studio embeds first-class native tools registered under the built-in MCP server (`atena_native`, transport: `builtin`):
+* **`atena_web_search`**: Public web search powered by a two-tier resilient engine: fast stealth HTTP with modern browser client headers (`sec-ch-ua`, `sec-fetch-*`), multi-provider organic card parsing (Bing, DuckDuckGo), with an automatic fallback to an in-app Headless Browser Simulation Engine (`BrowserEngine`) in native WebKit/WebView2 to bypass bot challenges without tokens or external binaries.
+* **`atena_fetch_webpage`**: Webpage reader converting HTML to sanitized Markdown text. Includes automatic detection of JavaScript Single-Page Applications (SPAs like React/Vue/Next.js) or bot challenges, dynamically rendering the page via an ephemeral, incognito headless Tauri Webview (`visible: false`) with strict RAII lifecycle cleanup to extract dynamic DOM content.
 * **`atena_scratchpad_write` / `atena_scratchpad_read` / `atena_scratchpad_clear`**: Working memory scratchpad for active tasks.
-* **`atena_search_memory` / `atena_search_episodes` / `atena_read_episode`**: Associative memory graph queries.
 * **`atena_schedule_task` / `atena_list_scheduled_tasks` / `atena_cancel_scheduled_task` / `atena_run_scheduled_task`**: Proactive background routines and automation scheduler.
 
-> **Operational Decoupling**: Core native tools (`atena_web_search`, `atena_fetch_webpage`, scratchpad, and scheduler) operate completely independently of the procedural skills (`enable_skills_memory`) and cognitive memory (`enable_cognitive_memory`) toggles. Disabling skills suppresses procedural recipes and terminal script executions (`run_command`, `run_skill_script`), but never disables web research or scratchpad capabilities.
+### Optimizing for Local LLM Latency
+When running small or quantized local LLMs (via Ollama, LM Studio, or MLX), injecting numerous tool schemas substantially degrades prompt processing speed, consumes context window limits, and increases first-token latency.
+To eliminate this bottleneck:
+1. **MCP Visibility**: The `atena_native` server is displayed alongside external servers in the MCP tools panel and Settings with a `BUILTIN` badge.
+2. **Granular Control**: Each of the 9 native tools can be toggled on or off individually via the MCP tool inspection modal, and the entire `atena_native` server can be toggled inactive.
+3. **Prompt Filtering**: Disabled native tools are excluded from the system prompt schema injection during inference and are rejected at the backend execution gateway if invoked.
+4. **Memory and Skills Isolation**: Associative memory tools (`atena_search_memory`, `atena_search_episodes`, `atena_read_episode`) and procedural skills (`run_command`, `run_skill_script`) have dedicated toggles in the Cognitive Memory settings and are kept out of the MCP tools modal to avoid clutter and redundancy.
 
 Refer to `doc/12_autonomous_agent_and_scheduler.md` for architectural details.
 

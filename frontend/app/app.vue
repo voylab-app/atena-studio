@@ -9,6 +9,7 @@
       :hardware="hardware"
       :activeModel="activeModel"
       :enableMemory="Boolean(config.enable_cognitive_memory)"
+      :enablePrivateChat="Boolean(config.enable_cognitive_memory) && (config.enable_facts_memory !== false || config.enable_episodic_memory !== false)"
       @selectSession="selectSession"
       @newChat="createNewSession"
       @newProjectChat="createNewProjectSession"
@@ -333,6 +334,7 @@ const loadingModelName = ref('')
 const loadingModelProgress = ref(0)
 const isScanning = ref(false)
 const isGenerating = ref(false)
+let activeGenerationId = 0
 const logs = ref<ServerRequestLog[]>([])
 const developerLogs = ref<DeveloperLogEntry[]>([])
 const mcpTools = ref<McpToolWithServer[]>([])
@@ -1420,22 +1422,62 @@ const handleDeleteMessage = (payload: any) => {
   }
 }
 
-const handleStopGeneration = () => {
+const handleStopGeneration = async () => {
+  activeGenerationId++
   isGenerating.value = false
+  try {
+    await invoke('stop_chat_generation')
+  } catch (_) {}
   if (currentSession.value && currentSession.value.messages) {
-    const lastAssistantMsg = [...currentSession.value.messages].reverse().find((m) => m.role === 'assistant')
-    if (lastAssistantMsg && lastAssistantMsg.is_streaming) {
-      lastAssistantMsg.is_streaming = false
-      if (!lastAssistantMsg.content && !lastAssistantMsg.thinking && (!lastAssistantMsg.tool_calls || lastAssistantMsg.tool_calls.length === 0)) {
-        lastAssistantMsg.content = t('chat.generation_interrupted')
+    for (const m of currentSession.value.messages) {
+      if (m.role === 'assistant' && m.is_streaming) {
+        m.is_streaming = false
+        if (!m.content && !m.thinking && (!m.tool_calls || m.tool_calls.length === 0)) {
+          m.content = t('chat.generation_interrupted')
+        }
       }
     }
   }
   saveSessions()
 }
 
+const isToolActiveForInference = (t: any, isPrivate = false): boolean => {
+  if (!t || t.enabled === false) return false
+
+  const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
+  const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
+  const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
+  const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
+
+  if (isFactsDisabled && t.tool?.name === 'atena_search_memory') {
+    return false
+  }
+  if (
+    isEpisodicDisabled &&
+    (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
+  ) {
+    return false
+  }
+
+  if (isSkillsDisabled) {
+    if (
+      t.server_id === 'skills' ||
+      t.tool?.name === 'run_command' ||
+      t.tool?.name === 'run_skill_command' ||
+      t.tool?.name === 'run_skill_script' ||
+      t.tool?.name === 'create_procedural_skill' ||
+      t.tool?.name === 'update_procedural_skill' ||
+      t.tool?.name === 'edit_procedural_skill'
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 const activeMcpToolsCount = computed(() => {
-  return mcpTools.value.filter((t) => t.enabled && t.server_id !== 'atena_native' && t.server_id !== 'atena' && t.server_id !== 'skills').length
+  return mcpTools.value.filter((t) => isToolActiveForInference(t, false)).length
 })
 
 const fetchMcpTools = async () => {
@@ -1585,8 +1627,15 @@ const handleSendMessage = async (payload: any) => {
     tool_calls: null,
     timestamp: new Date().toISOString(),
     is_streaming: true,
+    prompt_progress_pct: 0,
     tokens_count: 0,
-    generation_speed_tps: 0
+    generation_speed_tps: 0,
+    time_to_first_token_ms: 0
+  }
+
+  const thisGenId = ++activeGenerationId
+  for (const m of currentSession.value.messages) {
+    if (m.is_streaming) m.is_streaming = false
   }
 
   currentSession.value.messages.push(assistantMsg)
@@ -1612,7 +1661,7 @@ const handleSendMessage = async (payload: any) => {
     const channel = new Channel<any>()
 
     channel.onmessage = (chunk: any) => {
-      if (!isGenerating.value) return
+      if (thisGenId !== activeGenerationId || !isGenerating.value) return
 
       const targetMsg = currentSession.value.messages.find((m) => m.id === assistantMsgId)
       if (targetMsg) {
@@ -1621,6 +1670,14 @@ const handleSendMessage = async (payload: any) => {
         targetMsg.is_streaming = !chunk.is_done
         if (chunk.metrics) {
           targetMsg.metrics = chunk.metrics
+          if (chunk.metrics.time_to_first_token_ms) {
+            targetMsg.time_to_first_token_ms = chunk.metrics.time_to_first_token_ms
+          }
+        }
+
+        // Measure time to first token on first incoming chunk with content or thinking
+        if (!targetMsg.time_to_first_token_ms && ((chunk.content && chunk.content.length > 0) || (chunk.thinking && chunk.thinking.length > 0))) {
+          targetMsg.time_to_first_token_ms = Math.max(1, Date.now() - startTime)
         }
 
         if (chunk.tool_calls && chunk.tool_calls.length > 0) {
@@ -1634,7 +1691,7 @@ const handleSendMessage = async (payload: any) => {
 
         const elapsed = chunk.elapsed_ms || (Date.now() - startTime)
         if (chunk.metrics?.generation_speed_tps) {
-          targetMsg.generation_speed_tps = chunk.metrics.generation_speed_tps
+          targetMsg.generation_speed_tps = parseFloat(Number(chunk.metrics.generation_speed_tps).toFixed(1))
         } else if (elapsed > 0) {
           targetMsg.generation_speed_tps = parseFloat((tokCount / (elapsed / 1000)).toFixed(1))
         }
@@ -1646,6 +1703,13 @@ const handleSendMessage = async (payload: any) => {
 
         if (chunk.is_done) {
           isGenerating.value = false
+          // Ensure time_to_first_token_ms is populated in targetMsg.metrics if not present
+          if (targetMsg.time_to_first_token_ms) {
+            if (!targetMsg.metrics) targetMsg.metrics = {}
+            if (!targetMsg.metrics.time_to_first_token_ms) {
+              targetMsg.metrics.time_to_first_token_ms = targetMsg.time_to_first_token_ms
+            }
+          }
           // Filter out any unfinished streaming placeholders upon completion
           if (targetMsg.tool_calls && targetMsg.tool_calls.length > 0) {
             targetMsg.tool_calls = targetMsg.tool_calls.filter((tc: any) => tc.status !== 'streaming')
@@ -1687,46 +1751,11 @@ const handleSendMessage = async (payload: any) => {
 
     const isPrivate = !!currentSession.value?.is_private
     const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
-    const activeTools = mcpTools.value.filter((t) => {
-      // 1. Cognitive Memory layers filtering (facts and episodic memory)
-      if (isMemoryDisabled) {
-        if (
-          t.tool?.name === 'atena_search_memory' ||
-          t.tool?.name === 'atena_search_episodes' ||
-          t.tool?.name === 'atena_read_episode'
-        ) {
-          return false
-        }
-      } else {
-        if (config.value.enable_facts_memory === false && t.tool?.name === 'atena_search_memory') {
-          return false
-        }
-        if (
-          config.value.enable_episodic_memory === false &&
-          (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
-        ) {
-          return false
-        }
-      }
+    const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
+    const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
+    const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
 
-      // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
-      if (config.value.enable_skills_memory === false) {
-        if (
-          t.server_id === 'skills' ||
-          t.tool?.name === 'run_command' ||
-          t.tool?.name === 'run_skill_command' ||
-          t.tool?.name === 'run_skill_script' ||
-          t.tool?.name === 'create_procedural_skill' ||
-          t.tool?.name === 'update_procedural_skill' ||
-          t.tool?.name === 'edit_procedural_skill'
-        ) {
-          return false
-        }
-      }
-
-      // 3. Native utility tools (web search, webpage fetch, task scratchpad, scheduler) & external MCP tools remain enabled
-      return t.enabled !== false
-    })
+    const activeTools = mcpTools.value.filter((t) => isToolActiveForInference(t, isPrivate))
 
     const inferenceParams = {
       ...params.value,
@@ -1745,10 +1774,10 @@ const handleSendMessage = async (payload: any) => {
       mlxPort: config.value.mlx_port,
       ollamaHost: config.value.ollama_host,
       ollamaPort: config.value.ollama_port,
-      enableMemory: Boolean(config.value.enable_cognitive_memory) && !currentSession.value?.is_private,
-      enableFactsMemory: config.value.enable_facts_memory !== false,
-      enableSkillsMemory: config.value.enable_skills_memory !== false,
-      enableEpisodicMemory: config.value.enable_episodic_memory !== false,
+      enableMemory: !isMemoryDisabled,
+      enableFactsMemory: !isFactsDisabled,
+      enableSkillsMemory: !isSkillsDisabled,
+      enableEpisodicMemory: !isEpisodicDisabled,
       onEvent: channel
     })
   } catch (err) {
@@ -2127,6 +2156,10 @@ const processAutoTools = async (assistantMsg: any) => {
 
 // Trigger follow-up AI response with ALL tool results from the batch
 const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
+  const thisGenId = ++activeGenerationId
+  for (const m of currentSession.value.messages) {
+    if (m.is_streaming) m.is_streaming = false
+  }
   const followUpAssistantId = `msg-${Date.now()}-assistant-reply`
   const followUpMsg: ChatMessage = {
     id: followUpAssistantId,
@@ -2136,8 +2169,10 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
     tool_calls: null,
     timestamp: new Date().toISOString(),
     is_streaming: true,
+    prompt_progress_pct: 0,
     tokens_count: 0,
-    generation_speed_tps: 0
+    generation_speed_tps: 0,
+    time_to_first_token_ms: 0
   }
   currentSession.value.messages.push(followUpMsg)
   isGenerating.value = true
@@ -2181,7 +2216,7 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
   try {
     const channel = new Channel<any>()
     channel.onmessage = (chunk: any) => {
-      if (!isGenerating.value) return
+      if (thisGenId !== activeGenerationId || !isGenerating.value) return
       const target = currentSession.value.messages.find((m) => m.id === followUpAssistantId)
       if (target) {
         target.content = chunk.content || ''
@@ -2189,7 +2224,16 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
         target.is_streaming = !chunk.is_done
         if (chunk.metrics) {
           target.metrics = chunk.metrics
+          if (chunk.metrics.time_to_first_token_ms) {
+            target.time_to_first_token_ms = chunk.metrics.time_to_first_token_ms
+          }
         }
+
+        // Measure time to first token on first incoming chunk with content or thinking
+        if (!target.time_to_first_token_ms && ((chunk.content && chunk.content.length > 0) || (chunk.thinking && chunk.thinking.length > 0))) {
+          target.time_to_first_token_ms = Math.max(1, Date.now() - startTime)
+        }
+
         if (chunk.tool_calls && chunk.tool_calls.length > 0) {
           mergeToolCallsInPlace(target, chunk.tool_calls)
         }
@@ -2198,7 +2242,7 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
         target.tokens_count = tokCount
         const elapsed = chunk.elapsed_ms || (Date.now() - startTime)
         if (chunk.metrics?.generation_speed_tps) {
-          target.generation_speed_tps = chunk.metrics.generation_speed_tps
+          target.generation_speed_tps = parseFloat(Number(chunk.metrics.generation_speed_tps).toFixed(1))
         } else if (elapsed > 0) {
           target.generation_speed_tps = parseFloat((tokCount / (elapsed / 1000)).toFixed(1))
         }
@@ -2208,6 +2252,13 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
 
         if (chunk.is_done) {
           isGenerating.value = false
+          // Ensure time_to_first_token_ms is populated in target.metrics if not present
+          if (target.time_to_first_token_ms) {
+            if (!target.metrics) target.metrics = {}
+            if (!target.metrics.time_to_first_token_ms) {
+              target.metrics.time_to_first_token_ms = target.time_to_first_token_ms
+            }
+          }
           // Filter out any unfinished streaming placeholders upon completion
           if (target.tool_calls && target.tool_calls.length > 0) {
             target.tool_calls = target.tool_calls.filter((tc: any) => tc.status !== 'streaming')
@@ -2237,46 +2288,11 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
 
     const isPrivate = !!currentSession.value?.is_private
     const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
-    const activeTools = mcpTools.value.filter((t) => {
-      // 1. Cognitive Memory layers filtering (facts and episodic memory)
-      if (isMemoryDisabled) {
-        if (
-          t.tool?.name === 'atena_search_memory' ||
-          t.tool?.name === 'atena_search_episodes' ||
-          t.tool?.name === 'atena_read_episode'
-        ) {
-          return false
-        }
-      } else {
-        if (config.value.enable_facts_memory === false && t.tool?.name === 'atena_search_memory') {
-          return false
-        }
-        if (
-          config.value.enable_episodic_memory === false &&
-          (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
-        ) {
-          return false
-        }
-      }
+    const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
+    const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
+    const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
 
-      // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
-      if (config.value.enable_skills_memory === false) {
-        if (
-          t.server_id === 'skills' ||
-          t.tool?.name === 'run_command' ||
-          t.tool?.name === 'run_skill_command' ||
-          t.tool?.name === 'run_skill_script' ||
-          t.tool?.name === 'create_procedural_skill' ||
-          t.tool?.name === 'update_procedural_skill' ||
-          t.tool?.name === 'edit_procedural_skill'
-        ) {
-          return false
-        }
-      }
-
-      // 3. Native utility tools (web search, webpage fetch, task scratchpad, scheduler) & external MCP tools remain enabled
-      return t.enabled !== false
-    })
+    const activeTools = mcpTools.value.filter((t) => isToolActiveForInference(t, isPrivate))
 
     const inferenceParams = {
       ...params.value,
@@ -2295,10 +2311,10 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
       mlxPort: config.value.mlx_port,
       ollamaHost: config.value.ollama_host,
       ollamaPort: config.value.ollama_port,
-      enableMemory: Boolean(config.value.enable_cognitive_memory) && !currentSession.value?.is_private,
-      enableFactsMemory: config.value.enable_facts_memory !== false,
-      enableSkillsMemory: config.value.enable_skills_memory !== false,
-      enableEpisodicMemory: config.value.enable_episodic_memory !== false,
+      enableMemory: !isMemoryDisabled,
+      enableFactsMemory: !isFactsDisabled,
+      enableSkillsMemory: !isSkillsDisabled,
+      enableEpisodicMemory: !isEpisodicDisabled,
       onEvent: channel
     })
   } catch (err) {
@@ -2735,14 +2751,33 @@ onMounted(async () => {
     })
     await listen<DeveloperLogEntry>('developer_log_entry', (event) => {
       if (event.payload) {
-        developerLogs.value.push(event.payload)
-        if (developerLogs.value.length > 1000) {
-          developerLogs.value.splice(0, developerLogs.value.length - 1000)
+        const existingIdx = developerLogs.value.findIndex((l) => l.id === event.payload.id)
+        if (existingIdx !== -1) {
+          developerLogs.value[existingIdx] = { ...event.payload }
+        } else {
+          developerLogs.value.push(event.payload)
+          if (developerLogs.value.length > 1000) {
+            developerLogs.value.splice(0, developerLogs.value.length - 1000)
+          }
         }
       }
     })
     await listen('server_logs_updated', () => {
       fetchLogs()
+    })
+    await listen<{ percent: number }>('inference_prompt_progress', (event) => {
+      if (event.payload && currentSession.value) {
+        const msgs = currentSession.value.messages
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const m = msgs[i]
+          if (m && m.role === 'assistant' && m.is_streaming) {
+            if (event.payload.percent === 0 || event.payload.percent >= (m.prompt_progress_pct ?? 0)) {
+              m.prompt_progress_pct = event.payload.percent
+            }
+            break
+          }
+        }
+      }
     })
     await listen('developer_logs_cleared', () => {
       developerLogs.value = []

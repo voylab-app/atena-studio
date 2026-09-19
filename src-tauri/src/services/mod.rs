@@ -14,5 +14,4 @@ pub mod web_tools;
 pub mod scratchpad;
 pub mod agent_loop;
 pub mod scheduler;
-
-
+pub mod browser_engine;

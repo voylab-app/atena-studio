@@ -21,8 +21,15 @@ Atena Studio supports strictly local inference (with native hardware acceleratio
 
 The interface calculates generation performance token by token in real time:
 
+* **Real-Time Prompt Processing Progress (Prefill)**: Tracks prompt evaluation percentage (`Prompt processing progress: XX.X%`) in real time through an adaptive prefill ticker until the first token arrives, displayed both in the Developer Logs terminal stream and dynamically inside the active chat message bubble (`Processando prompt (XX.X%)...`), avoiding static/frozen states during heavy prompt evaluation.
+* **Resilient SSE Streaming with Auto-Recovery**: Enforces long-duration connection timeouts (up to 30 minutes) and automatic fallback/retry with standard minimal payloads when local inference servers reject optional vendor parameters, guaranteeing smooth token-by-token streaming without abruptly dropping to one-shot dumps.
+* **Live Token Generation Stream**: Emits real-time token progress updates (`Generating response: X tokens (Y tok/s)...`) directly to the Developer Logs terminal stream, updating the line in-place just like LM Studio.
+* **Developer Logs Status Badge**: Dynamically transitions between `Processing Prompt (XX.X%)` (amber) and `Generating Tokens (X tok • Y tok/s)` (emerald) during inference.
+* **Chat Message Streaming Indicator**: Displays an animated prompt processing indicator prior to the first generated token, followed by real-time token count and generation speed ($tok/s$) alongside the active message.
 * **Generation Speed (TPS)**: Displays the live token output rate in tokens per second ($tok/s$).
+* **Time to First Token (TTFT)**: Tracks prompt evaluation latency and latency to first generated token directly in the message bottom toolbar.
 * **Token Counts**: Prompt input tokens, reasoning/thinking tokens, and completion output tokens.
+* **Message Bottom Toolbar**: Modern footer bar containing quick actions (Listen/TTS, Copy, Delete) on the left and performance badges (KV Cache, Speed, TTFT, Tokens) on the right with quick access to the Efficiency Modal.
 * **Memory Consumption**:
   * **AI Model Memory (VRAM / Unified Memory)**: Exact memory allocated by the loaded model.
   * **Global System RAM**: Visual breakdown between AI consumption, other applications, and free system memory.
