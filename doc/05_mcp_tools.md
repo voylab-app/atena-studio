@@ -67,8 +67,8 @@ The command accepts an optional `target_locale: Option<String>` parameter:
 ## 5. Built-in Native Tools (Zero-MCP Setup)
 
 In addition to external MCP servers, Atena Studio embeds first-class native tools registered under `atena_native`:
-* **`atena_web_search`**: Public web search powered by a multi-provider resilient engine (Bing, DuckDuckGo) without external binaries or API keys.
-* **`atena_fetch_webpage`**: Webpage reader converting HTML to sanitized, clean Markdown text.
+* **`atena_web_search`**: Public web search powered by a two-tier resilient engine: fast stealth HTTP with modern browser client headers (`sec-ch-ua`, `sec-fetch-*`), multi-provider organic card parsing (Bing, DuckDuckGo), with an automatic fallback to an in-app Headless Browser Simulation Engine (`BrowserEngine`) in native WebKit/WebView2 to bypass bot challenges without tokens or external binaries.
+* **`atena_fetch_webpage`**: Webpage reader converting HTML to sanitized Markdown text. Includes automatic detection of JavaScript Single-Page Applications (SPAs like React/Vue/Next.js) or bot challenges, dynamically rendering the page via an ephemeral, incognito headless Tauri Webview (`visible: false`) with strict RAII lifecycle cleanup to extract dynamic DOM content.
 * **`atena_scratchpad_write` / `atena_scratchpad_read` / `atena_scratchpad_clear`**: Working memory scratchpad for active tasks.
 * **`atena_search_memory` / `atena_search_episodes` / `atena_read_episode`**: Associative memory graph queries.
 * **`atena_schedule_task` / `atena_list_scheduled_tasks` / `atena_cancel_scheduled_task` / `atena_run_scheduled_task`**: Proactive background routines and automation scheduler.

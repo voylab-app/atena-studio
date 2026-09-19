@@ -110,7 +110,8 @@
     "select_session_tooltip": "Выбрать чат",
     "unselect_session_tooltip": "Снять выбор с чата",
     "private_session_badge_tooltip": "Этот чат находится в приватном режиме",
-    "private_chat": "Приватный чат"
+    "private_chat": "Приватный чат",
+    "search_chats_placeholder": "Поиск бесед... (⌘K)"
   },
   "header": {
     "chat_title": "Чат",
@@ -118,6 +119,10 @@
     "select_model": "Выбрать модель",
     "persona": "Персона",
     "parameters": "Параметры",
+    "inference": "Инференс",
+    "inference_tooltip": "Параметры инференса и сэмплирования (Системный промпт, Температура, Рассуждение)",
+    "vram_label": "VRAM ИИ",
+    "model_size_tooltip": "Размер файла модели на диске: {size} ГБ",
     "export": "Экспорт",
     "clear_chat": "Очистить чат",
     "search_chat": "Поиск по чату",
@@ -525,6 +530,8 @@
     "filter_thinking": "Рассуждение",
     "filter_vision": "Зрение",
     "gpu_loading_params": "Параметры запуска GPU",
+    "gpu_params_toggle_expand": "Показать параметры запуска GPU",
+    "gpu_params_toggle_collapse": "Скрыть параметры запуска GPU",
     "kv_cache_label": "KV-кэш:",
     "kv_cache_tooltip": "Квантование KV Cache в VRAM",
     "kv_cache_f16": "F16 (По умолчанию • Максимальная точность)",
@@ -595,6 +602,7 @@
       "custom_cloud_default": "Пользовательский эндпоинт OpenAI, направленный на {url}."
     },
     "config_before_load_tooltip": "Параметры запуска (KV-кэш, окно контекста, слои GPU)",
+    "config_active_tooltip": "Проверить и настроить параметры активной модели",
     "loading_progress": "Загрузка {progress}%",
     "activate": "Активировать",
     "config_modal_title": "Загрузка модели",
@@ -607,6 +615,7 @@
     "flash_attention_desc": "Ускорение Metal GPU",
     "prompt_cache_desc": "Повторное использование префиксов токенов",
     "load_model_now": "Загрузить модель",
+    "apply_and_reload": "Применить и перезагрузить",
     "delete_modal_title": "Удалить модель",
     "delete_modal_irreversible": "Это действие необратимо",
     "delete_modal_format": "Формат:",

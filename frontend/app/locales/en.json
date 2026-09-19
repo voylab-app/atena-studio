@@ -110,7 +110,8 @@
     "select_session_tooltip": "Select conversation",
     "unselect_session_tooltip": "Deselect conversation",
     "private_session_badge_tooltip": "Private Chat (Memory Isolated)",
-    "private_chat": "Private Chat"
+    "private_chat": "Private Chat",
+    "search_chats_placeholder": "Search chats... (⌘K)"
   },
   "header": {
     "chat_title": "Atena Chat",
@@ -118,6 +119,10 @@
     "select_model": "Select model...",
     "persona": "Persona",
     "parameters": "Parameters",
+    "inference": "Inference",
+    "inference_tooltip": "Inference & Sampling Parameters (System prompt, Temperature, Reasoning)",
+    "vram_label": "AI VRAM",
+    "model_size_tooltip": "Model file size on disk: {size} GB",
     "export": "Export chat",
     "clear_chat": "Clear chat",
     "search_chat": "Search in chat",
@@ -525,6 +530,8 @@
     "filter_thinking": "Reasoning",
     "filter_vision": "Vision",
     "gpu_loading_params": "GPU Boot Parameters",
+    "gpu_params_toggle_expand": "Show GPU boot parameters",
+    "gpu_params_toggle_collapse": "Hide GPU boot parameters",
     "kv_cache_label": "KV Cache:",
     "kv_cache_tooltip": "KV Cache quantization in VRAM",
     "kv_cache_f16": "F16 (Default • Maximum Precision)",
@@ -595,6 +602,7 @@
       "custom_cloud_default": "Custom OpenAI-compatible endpoint pointing to {url}."
     },
     "config_before_load_tooltip": "Configure Boot Parameters (KV Cache, Context, GPU)",
+    "config_active_tooltip": "Inspect and tune active model parameters",
     "loading_progress": "Loading {progress}%",
     "activate": "Activate",
     "config_modal_title": "Load Model",
@@ -607,6 +615,7 @@
     "flash_attention_desc": "Metal GPU Acceleration",
     "prompt_cache_desc": "Token prefix reuse",
     "load_model_now": "Load Model Now",
+    "apply_and_reload": "Apply & Reload",
     "delete_modal_title": "Delete Model",
     "delete_modal_irreversible": "This action cannot be undone",
     "delete_modal_format": "Format:",

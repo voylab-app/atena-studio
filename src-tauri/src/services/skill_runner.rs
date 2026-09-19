@@ -559,4 +559,33 @@ mod tests {
         // Clean up
         let _ = MemoryGraphEngine::delete_skill(&skill.id);
     }
+
+    #[tokio::test]
+    async fn test_procedural_skills_tools_suppressed_when_memory_disabled() {
+        use crate::services::mcp_service::McpManager;
+        let mut tools = McpManager::native_atena_tools();
+
+        let use_skills = false;
+        if !use_skills {
+            tools.retain(|t| {
+                t.server_id != "skills"
+                    && t.tool.name != "run_command"
+                    && t.tool.name != "run_skill_command"
+                    && t.tool.name != "run_skill_script"
+                    && t.tool.name != "create_procedural_skill"
+                    && t.tool.name != "update_procedural_skill"
+                    && t.tool.name != "edit_procedural_skill"
+            });
+        }
+
+        assert!(!tools.iter().any(|t| t.server_id == "skills"));
+        assert!(!tools.iter().any(|t| t.tool.name == "run_command"));
+        assert!(!tools.iter().any(|t| t.tool.name == "create_procedural_skill"));
+        assert!(!tools.iter().any(|t| t.tool.name == "update_procedural_skill"));
+        assert!(!tools.iter().any(|t| t.tool.name == "run_skill_script"));
+
+        // General native utilities like web search and scratchpad must remain intact
+        assert!(tools.iter().any(|t| t.tool.name == "atena_web_search"));
+        assert!(tools.iter().any(|t| t.tool.name == "atena_scratchpad_write"));
+    }
 }

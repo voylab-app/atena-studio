@@ -110,7 +110,8 @@
     "select_session_tooltip": "Selecionar conversa",
     "unselect_session_tooltip": "Desmarcar conversa",
     "private_session_badge_tooltip": "Conversa Privada (Isolada da Memória)",
-    "private_chat": "Chat Privado"
+    "private_chat": "Chat Privado",
+    "search_chats_placeholder": "Buscar conversas... (⌘K)"
   },
   "header": {
     "chat_title": "Chat do Atena",
@@ -118,6 +119,10 @@
     "select_model": "Selecionar modelo...",
     "persona": "Persona",
     "parameters": "Parâmetros",
+    "inference": "Inferência",
+    "inference_tooltip": "Parâmetros de Inferência e Amostragem (Prompt do sistema, Temperatura, Raciocínio)",
+    "vram_label": "VRAM DA IA",
+    "model_size_tooltip": "Tamanho dos pesos em disco: {size} GB",
     "export": "Exportar conversa",
     "clear_chat": "Limpar conversa",
     "search_chat": "Buscar na conversa",
@@ -525,6 +530,8 @@
     "filter_thinking": "Raciocínio",
     "filter_vision": "Visão",
     "gpu_loading_params": "Parâmetros de Carregamento GPU",
+    "gpu_params_toggle_expand": "Exibir parâmetros de boot da GPU",
+    "gpu_params_toggle_collapse": "Ocultar parâmetros de boot da GPU",
     "kv_cache_label": "KV Cache:",
     "kv_cache_tooltip": "Quantização do KV Cache na memória VRAM",
     "kv_cache_f16": "F16 (Padrão • Máxima Precisão)",
@@ -595,6 +602,7 @@
       "custom_cloud_default": "Endpoint OpenAI-compatível customizado apontando para {url}."
     },
     "config_before_load_tooltip": "Configurar Parâmetros de Carregamento (KV Cache, Contexto, GPU)",
+    "config_active_tooltip": "Inspecionar e ajustar parâmetros do modelo ativo",
     "loading_progress": "Carregando {progress}%",
     "activate": "Ativar",
     "config_modal_title": "Carregar Modelo",
@@ -607,6 +615,7 @@
     "flash_attention_desc": "Aceleração GPU Metal",
     "prompt_cache_desc": "Reuso de prefixos de tokens",
     "load_model_now": "Carregar Modelo Agora",
+    "apply_and_reload": "Aplicar e Recarregar",
     "delete_modal_title": "Excluir Modelo",
     "delete_modal_irreversible": "Esta ação é irreversível",
     "delete_modal_format": "Formato:",

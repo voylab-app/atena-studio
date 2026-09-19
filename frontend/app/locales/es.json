@@ -110,7 +110,8 @@
     "select_session_tooltip": "Seleccionar conversación",
     "unselect_session_tooltip": "Deseleccionar conversación",
     "private_session_badge_tooltip": "Conversación Privada (Aislada de la Memoria)",
-    "private_chat": "Chat Privado"
+    "private_chat": "Chat Privado",
+    "search_chats_placeholder": "Buscar conversaciones... (⌘K)"
   },
   "header": {
     "chat_title": "Chat de Atena",
@@ -118,6 +119,10 @@
     "select_model": "Seleccionar modelo...",
     "persona": "Persona",
     "parameters": "Parámetros",
+    "inference": "Inferencia",
+    "inference_tooltip": "Parámetros de Inferencia y Muestreo (Prompt del sistema, Temperatura, Razonamiento)",
+    "vram_label": "VRAM DE IA",
+    "model_size_tooltip": "Tamaño de los pesos en disco: {size} GB",
     "export": "Exportar conversación",
     "clear_chat": "Limpiar conversación",
     "search_chat": "Buscar en la conversación",
@@ -525,6 +530,8 @@
     "filter_thinking": "Razonamiento",
     "filter_vision": "Visión",
     "gpu_loading_params": "Parámetros de Carga GPU",
+    "gpu_params_toggle_expand": "Mostrar parámetros de arranque de GPU",
+    "gpu_params_toggle_collapse": "Ocultar parámetros de arranque de GPU",
     "kv_cache_label": "KV Cache:",
     "kv_cache_tooltip": "Cuantización de KV Cache en la memoria VRAM",
     "kv_cache_f16": "F16 (Predeterminado • Máxima Precisión)",
@@ -595,6 +602,7 @@
       "custom_cloud_default": "Endpoint personalizado compatible con OpenAI que apunta a {url}."
     },
     "config_before_load_tooltip": "Configurar Parámetros de Carga (KV Cache, Contexto, GPU)",
+    "config_active_tooltip": "Inspeccionar y ajustar parámetros del modelo activo",
     "loading_progress": "Cargando {progress}%",
     "activate": "Activar",
     "config_modal_title": "Cargar Modelo",
@@ -607,6 +615,7 @@
     "flash_attention_desc": "Aceleración GPU Metal",
     "prompt_cache_desc": "Reutilización de prefijos de tokens",
     "load_model_now": "Cargar Modelo Ahora",
+    "apply_and_reload": "Aplicar y Recargar",
     "delete_modal_title": "Eliminar Modelo",
     "delete_modal_irreversible": "Esta acción es irreversible",
     "delete_modal_format": "Formato:",

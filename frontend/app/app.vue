@@ -9,6 +9,7 @@
       :hardware="hardware"
       :activeModel="activeModel"
       :enableMemory="Boolean(config.enable_cognitive_memory)"
+      :enablePrivateChat="Boolean(config.enable_cognitive_memory) && (config.enable_facts_memory !== false || config.enable_episodic_memory !== false)"
       @selectSession="selectSession"
       @newChat="createNewSession"
       @newProjectChat="createNewProjectSession"
@@ -1687,30 +1688,24 @@ const handleSendMessage = async (payload: any) => {
 
     const isPrivate = !!currentSession.value?.is_private
     const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
+    const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
+    const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
+    const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
+
     const activeTools = mcpTools.value.filter((t) => {
       // 1. Cognitive Memory layers filtering (facts and episodic memory)
-      if (isMemoryDisabled) {
-        if (
-          t.tool?.name === 'atena_search_memory' ||
-          t.tool?.name === 'atena_search_episodes' ||
-          t.tool?.name === 'atena_read_episode'
-        ) {
-          return false
-        }
-      } else {
-        if (config.value.enable_facts_memory === false && t.tool?.name === 'atena_search_memory') {
-          return false
-        }
-        if (
-          config.value.enable_episodic_memory === false &&
-          (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
-        ) {
-          return false
-        }
+      if (isFactsDisabled && t.tool?.name === 'atena_search_memory') {
+        return false
+      }
+      if (
+        isEpisodicDisabled &&
+        (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
+      ) {
+        return false
       }
 
       // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
-      if (config.value.enable_skills_memory === false) {
+      if (isSkillsDisabled) {
         if (
           t.server_id === 'skills' ||
           t.tool?.name === 'run_command' ||
@@ -1745,10 +1740,10 @@ const handleSendMessage = async (payload: any) => {
       mlxPort: config.value.mlx_port,
       ollamaHost: config.value.ollama_host,
       ollamaPort: config.value.ollama_port,
-      enableMemory: Boolean(config.value.enable_cognitive_memory) && !currentSession.value?.is_private,
-      enableFactsMemory: config.value.enable_facts_memory !== false,
-      enableSkillsMemory: config.value.enable_skills_memory !== false,
-      enableEpisodicMemory: config.value.enable_episodic_memory !== false,
+      enableMemory: !isMemoryDisabled,
+      enableFactsMemory: !isFactsDisabled,
+      enableSkillsMemory: !isSkillsDisabled,
+      enableEpisodicMemory: !isEpisodicDisabled,
       onEvent: channel
     })
   } catch (err) {
@@ -2237,30 +2232,24 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
 
     const isPrivate = !!currentSession.value?.is_private
     const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
+    const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
+    const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
+    const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
+
     const activeTools = mcpTools.value.filter((t) => {
       // 1. Cognitive Memory layers filtering (facts and episodic memory)
-      if (isMemoryDisabled) {
-        if (
-          t.tool?.name === 'atena_search_memory' ||
-          t.tool?.name === 'atena_search_episodes' ||
-          t.tool?.name === 'atena_read_episode'
-        ) {
-          return false
-        }
-      } else {
-        if (config.value.enable_facts_memory === false && t.tool?.name === 'atena_search_memory') {
-          return false
-        }
-        if (
-          config.value.enable_episodic_memory === false &&
-          (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
-        ) {
-          return false
-        }
+      if (isFactsDisabled && t.tool?.name === 'atena_search_memory') {
+        return false
+      }
+      if (
+        isEpisodicDisabled &&
+        (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
+      ) {
+        return false
       }
 
       // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
-      if (config.value.enable_skills_memory === false) {
+      if (isSkillsDisabled) {
         if (
           t.server_id === 'skills' ||
           t.tool?.name === 'run_command' ||
@@ -2295,10 +2284,10 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
       mlxPort: config.value.mlx_port,
       ollamaHost: config.value.ollama_host,
       ollamaPort: config.value.ollama_port,
-      enableMemory: Boolean(config.value.enable_cognitive_memory) && !currentSession.value?.is_private,
-      enableFactsMemory: config.value.enable_facts_memory !== false,
-      enableSkillsMemory: config.value.enable_skills_memory !== false,
-      enableEpisodicMemory: config.value.enable_episodic_memory !== false,
+      enableMemory: !isMemoryDisabled,
+      enableFactsMemory: !isFactsDisabled,
+      enableSkillsMemory: !isSkillsDisabled,
+      enableEpisodicMemory: !isEpisodicDisabled,
       onEvent: channel
     })
   } catch (err) {

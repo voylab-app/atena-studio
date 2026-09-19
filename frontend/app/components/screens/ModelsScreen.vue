@@ -180,20 +180,51 @@
         </div>
 
         <!-- Bottom Row: Pre-Load Hardware & KV Cache Configuration Bar (Local Models) -->
-        <div v-if="activeFilter !== 'cloud' && activeFilter !== 'agy'" class="p-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-[#101424] via-[#0d101c] to-[#101424] border border-[#1d2338] flex items-center justify-between gap-3 text-xs shadow-inner flex-wrap">
-          <div class="flex items-center gap-2.5">
-            <div class="w-7 h-7 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shadow-sm">
-              <Zap class="w-3.5 h-3.5" />
+        <div v-if="activeFilter !== 'cloud' && activeFilter !== 'agy'" class="rounded-2xl bg-gradient-to-r from-[#101424] via-[#0d101c] to-[#101424] border border-[#1d2338] shadow-inner transition-all overflow-hidden">
+          <!-- Collapsible Header Bar -->
+          <div
+            @click="isGpuParamsExpanded = !isGpuParamsExpanded"
+            class="p-2.5 px-3.5 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-white/[0.02] transition-colors select-none flex-wrap"
+          >
+            <div class="flex items-center gap-2.5">
+              <div class="w-6 h-6 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shadow-sm flex-shrink-0">
+                <Zap class="w-3.5 h-3.5" />
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
+                  <span>{{ $t('models.gpu_loading_params') }}</span>
+                  <span class="text-[10.5px] font-normal text-teal-400 font-mono">({{ supportsMlx ? 'Metal / VRAM' : 'GPU / VRAM' }})</span>
+                </span>
+
+                <!-- Quick Summary Badges when Collapsed -->
+                <div v-if="!isGpuParamsExpanded && params" class="hidden sm:flex items-center gap-1.5 text-[10.5px] font-mono">
+                  <span class="bg-[#090b12] px-2 py-0.5 rounded-lg border border-[#1e2338] text-teal-300 font-medium">
+                    {{ params.kv_cache_quant?.toUpperCase() }}
+                  </span>
+                  <span class="bg-[#090b12] px-2 py-0.5 rounded-lg border border-[#1e2338] text-indigo-300 font-medium">
+                    {{ Math.round((params.context_length || 4096) / 1024) }}k
+                  </span>
+                  <span v-if="params.flash_attention !== false" class="bg-indigo-500/15 text-indigo-300 px-2 py-0.5 rounded-lg border border-indigo-500/30">
+                    Flash Attn
+                  </span>
+                  <span v-if="params.enable_prompt_cache !== false" class="bg-emerald-500/15 text-emerald-300 px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                    Cache Reuse
+                  </span>
+                </div>
+              </div>
             </div>
-            <div>
-              <span class="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
-                <span>{{ $t('models.gpu_loading_params') }}</span>
-                <span class="text-[10.5px] font-normal text-teal-400 font-mono">({{ supportsMlx ? 'Metal / VRAM' : 'GPU / VRAM' }})</span>
+
+            <!-- Collapse / Expand Trigger -->
+            <div class="flex items-center gap-2 text-slate-400 text-[11px] ml-auto">
+              <span class="hidden md:inline text-slate-500 text-[10.5px]">
+                {{ isGpuParamsExpanded ? $t('models.gpu_params_toggle_collapse') : $t('models.gpu_params_toggle_expand') }}
               </span>
+              <ChevronDown :class="['w-3.5 h-3.5 transition-transform duration-200', isGpuParamsExpanded ? 'rotate-180 text-teal-400' : 'text-slate-500']" />
             </div>
           </div>
 
-          <div class="flex items-center gap-2.5 flex-wrap">
+          <!-- Expanded Body with Controls -->
+          <div v-if="isGpuParamsExpanded" class="px-3.5 pb-3 pt-1 border-t border-[#1a1f33] flex items-center justify-end gap-2.5 flex-wrap">
             <!-- KV Cache Quantization Selector -->
             <div class="flex items-center gap-2 bg-[#090b12] px-2.5 py-1 rounded-xl border border-[#1e2338]">
               <span class="text-[11px] text-slate-400 font-medium">{{ $t('models.kv_cache_label') }}</span>
@@ -610,12 +641,12 @@
             </div>
 
             <div class="flex items-center gap-2 shrink-0">
-              <!-- Configure Before Load Button (Apenas modelos locais) -->
+              <!-- Configure Model Button (Local models: both active and inactive) -->
               <button
-                v-if="!isCardActive(card) && !isAgyModel(card.model)"
+                v-if="!isAgyModel(card.model)"
                 @click="openModelConfigModal(card.model)"
                 class="p-2 rounded-xl bg-[#141826] hover:bg-[#1c2236] border border-[#1e2338] text-slate-400 hover:text-indigo-300 transition-all cursor-pointer active:scale-95 shadow-sm"
-                :title="$t('models.config_before_load_tooltip')"
+                :title="isCardActive(card) ? $t('models.config_active_tooltip') : $t('models.config_before_load_tooltip')"
               >
                 <SlidersHorizontal class="w-3.5 h-3.5" />
               </button>
@@ -624,9 +655,10 @@
               <button
                 v-if="isCardActive(card) && !isLoadingModel"
                 @click="$emit('unloadModel')"
-                class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-xs font-semibold text-rose-300 transition-all active:scale-95 cursor-pointer shadow-sm"
+                class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 hover:border-rose-500/40 text-xs font-semibold text-rose-300 hover:text-rose-200 transition-all active:scale-95 cursor-pointer shadow-sm group"
+                :title="$t('models.unload_model')"
               >
-                <Power class="w-3 h-3 text-rose-400" />
+                <Power class="w-3 h-3 text-rose-400 group-hover:rotate-12 transition-transform" />
                 <span>{{ $t('models.unload_model') }}</span>
               </button>
 
@@ -875,7 +907,7 @@
               class="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer active:scale-95 flex items-center gap-2"
             >
               <Play class="w-3.5 h-3.5 fill-white" />
-              <span>{{ $t('models.load_model_now') }}</span>
+              <span>{{ props.activeModelId === selectedModelForConfig?.id ? $t('models.apply_and_reload') : $t('models.load_model_now') }}</span>
             </button>
           </div>
         </div>
@@ -980,7 +1012,8 @@ import {
   History,
   Cloud,
   Blocks,
-  EyeOff
+  EyeOff,
+  ChevronDown
 } from 'lucide-vue-next'
 import { addNotification } from '~/utils/notifications'
 import { contractUserPath } from '~/utils/pathUtils'
@@ -1039,6 +1072,7 @@ const supportsMlx = inject<Ref<boolean> | ComputedRef<boolean>>('supportsMlx', c
 
 const searchQuery = ref('')
 const activeFilter = ref('all')
+const isGpuParamsExpanded = ref(false)
 const selectedModelForConfig = ref<ModelInfo | null>(null)
 
 // Resolves localized descriptions for standard model IDs or patterns, falling back to original description
