@@ -10,4 +10,9 @@ pub mod plugins;
 pub mod skill_runner;
 pub mod db;
 pub mod gateways;
+pub mod web_tools;
+pub mod scratchpad;
+pub mod agent_loop;
+pub mod scheduler;
+
 

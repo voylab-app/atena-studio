@@ -70,3 +70,12 @@ To maintain a clean and focused workspace, Atena Studio offers comprehensive cha
 * **Unified SQLite Persistence**:
   * Conversations and message histories are persisted directly to the embedded SQLite database (`~/.atena/atena.db`), ensuring transactional consistency, eliminating browser localStorage quota limits, and maintaining synchronized real-time state across desktop webviews and web browsers.
 
+---
+
+## 6. Autonomous ReAct Loop & Task Scratchpad
+
+For complex, multi-step problem solving:
+* **Multi-Step Execution**: Chains model thoughts and tool outputs in an autonomous cycle (`AutonomousAgentRunner`) with a hard budget of up to 6 iterations per task.
+* **Automatic Error Feedback**: If scripts or tools return errors, Atena automatically presents the error back to the model for self-correction without requiring constant manual prompts.
+* **Ephemeral Working Scratchpad**: Temporary notes, intermediate test results, and bash outputs are stored in `SessionScratchpadManager`, keeping the permanent associative graph pristine. For complete details, consult `doc/12_autonomous_agent_and_scheduler.md`.
+

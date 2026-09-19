@@ -265,32 +265,89 @@ mod tests {
 
     #[test]
     fn test_strip_internal_tags_invoke_block() {
-        let input = "Boa pergunta! Vou verificar de novo.\n\n<invoke name=\"atena_search_episodes\">\n<parameter name=\"max_results\">10</parameter>\n</invoke>";
+        let input = "Good question! Let me check again.\n\n<invoke name=\"atena_search_episodes\">\n<parameter name=\"max_results\">10</parameter>\n</invoke>";
         let cleaned = strip_internal_tags(input);
-        assert_eq!(cleaned, "Boa pergunta! Vou verificar de novo.");
+        assert_eq!(cleaned, "Good question! Let me check again.");
     }
 
     #[test]
     fn test_strip_internal_tags_think_and_memory() {
-        let input = "<think>Analizando pergunta do usuario...</think>\nOlá Carlos!\n<memory subject=\"User\" property=\"Prefere café filtrado\" />";
+        let input = "<think>Analyzing user request...</think>\nHello Alex!\n<memory subject=\"User\" property=\"Prefers dark roast coffee\" />";
         let cleaned = strip_internal_tags(input);
-        assert_eq!(cleaned, "Olá Carlos!");
+        assert_eq!(cleaned, "Hello Alex!");
     }
 
     #[test]
     fn test_strip_internal_tags_inline_and_unclosed() {
-        let input = "Resposta normal.\n<invoke name=\"search\">param</invoke>\nMais texto.\n<parameter name=\"foo\">";
+        let input = "Normal answer.\n<invoke name=\"search\">param</invoke>\nMore text.\n<parameter name=\"foo\">";
         let cleaned = strip_internal_tags(input);
-        assert_eq!(cleaned, "Resposta normal.\n\nMais texto.");
+        assert_eq!(cleaned, "Normal answer.\n\nMore text.");
+    }
+
+    #[test]
+    fn test_strip_internal_tags_adjust_headings_and_bold() {
+        let input = "### Update Summary\n\n* **Product:** ITEM\n* **Identified Code:** **`8308.90.90`**\nFound **1 item** in **company 205**.";
+        let cleaned = strip_internal_tags(input);
+        assert!(!cleaned.contains("###"));
+        assert!(cleaned.contains("*Update Summary*"));
+        assert!(cleaned.contains("• *Product:* ITEM"));
+        assert!(cleaned.contains("`8308.90.90`"));
+        assert!(!cleaned.contains("**`8308.90.90`**"));
+        assert!(cleaned.contains("*1 item*"));
+        assert!(cleaned.contains("*company 205*"));
+    }
+
+    #[test]
+    fn test_strip_internal_tags_text_fully_preserved() {
+        let input = "The product registration was successfully updated!\nIf you need any other verification or adjustment on other products, feel free to ask!";
+        let cleaned = strip_internal_tags(input);
+        assert_eq!(cleaned, "The product registration was successfully updated!\nIf you need any other verification or adjustment on other products, feel free to ask!");
+    }
+
+    #[test]
+    fn test_strip_internal_tags_code_blocks_preserved() {
+        let input = "Code:\n```python\n# Python comment\nx = y ** 2\n```";
+        let cleaned = strip_internal_tags(input);
+        assert!(cleaned.contains("# Python comment"));
+        assert!(cleaned.contains("x = y ** 2"));
     }
 }
 
+/// Converts double asterisks `**` to single asterisk `*` for Telegram Markdown outside inline code blocks.
+fn adjust_markdown_bold(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_code = false;
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] == '`' {
+            in_code = !in_code;
+            out.push('`');
+            i += 1;
+            continue;
+        }
+
+        if !in_code && chars[i] == '*' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            out.push('*');
+            i += 2;
+            continue;
+        }
+
+        out.push(chars[i]);
+        i += 1;
+    }
+
+    out
+}
+
 /// Strips internal reasoning (<think>), tool invocations (<invoke>, <parameter>, <tool_call>),
-/// and cognitive memory tags (<memory>, <forget>) from assistant responses before sending to chat gateways.
+/// cognitive memory tags (<memory>, <forget>), and adjusts Markdown formatting (** to * and ##/### to *Heading*)
+/// for clean rendering in Telegram/Discord without deleting any text content.
 pub fn strip_internal_tags(text: &str) -> String {
     let mut result = text.to_string();
 
-    // 1. Remove paired blocks (both opening tag, content, and closing tag)
+    // 1. Remove paired XML blocks (both opening tag, content, and closing tag)
     let block_tags = [
         "think",
         "invoke",
@@ -305,12 +362,10 @@ pub fn strip_internal_tags(text: &str) -> String {
         let close_tag = format!("</{}>", tag);
 
         while let Some(start_idx) = result.find(&open_prefix) {
-            // Check if there is a closing tag after start_idx
             if let Some(close_rel_idx) = result[start_idx..].find(&close_tag) {
                 let end_idx = start_idx + close_rel_idx + close_tag.len();
                 result.replace_range(start_idx..end_idx, "");
             } else if let Some(self_close_rel) = result[start_idx..].find("/>") {
-                // Check if there is a standard '>' before '/>'
                 if let Some(regular_close_rel) = result[start_idx..].find('>') {
                     if regular_close_rel < self_close_rel {
                         result.replace_range(start_idx..start_idx + regular_close_rel + 1, "");
@@ -320,11 +375,9 @@ pub fn strip_internal_tags(text: &str) -> String {
                 let tag_end = start_idx + self_close_rel + 2;
                 result.replace_range(start_idx..tag_end, "");
             } else if let Some(regular_close_rel) = result[start_idx..].find('>') {
-                // Opening tag without closing tag
                 let tag_end = start_idx + regular_close_rel + 1;
                 result.replace_range(start_idx..tag_end, "");
             } else {
-                // Incomplete tag trailing at the end
                 result.replace_range(start_idx.., "");
                 break;
             }
@@ -337,23 +390,69 @@ pub fn strip_internal_tags(text: &str) -> String {
         result = result.replace(&close_tag, "");
     }
 
-    // 3. Clean up line formatting and collapse excessive blank lines
+    // 3. Process line-by-line: sanitize headings (#/##/###), bullets (* to •), and adjust ** to *
     let mut cleaned_lines = Vec::new();
     let mut consecutive_blanks = 0;
+    let mut in_code_block = false;
 
     for line in result.lines() {
         let trimmed = line.trim();
+
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            consecutive_blanks = 0;
+            cleaned_lines.push(line.to_string());
+            continue;
+        }
+
+        if in_code_block {
+            cleaned_lines.push(line.to_string());
+            continue;
+        }
+
         if trimmed.is_empty() {
             consecutive_blanks += 1;
             if consecutive_blanks <= 1 {
-                cleaned_lines.push("");
+                cleaned_lines.push(String::new());
             }
-        } else {
-            consecutive_blanks = 0;
-            cleaned_lines.push(trimmed);
+            continue;
         }
+
+        consecutive_blanks = 0;
+        let mut line_str = trimmed.to_string();
+
+        // Adjust Markdown headings (#, ##, ###, ####) to clean bold (*Heading*)
+        if line_str.starts_with('#') {
+            let without_hashes = line_str.trim_start_matches('#').trim();
+            let clean_heading = without_hashes.trim_matches('*').trim();
+            if !clean_heading.is_empty() {
+                line_str = format!("*{}*", clean_heading);
+            }
+        }
+
+        // Adjust list bullets starting with "* " to "• " so they do not collide with Telegram bold asterisks
+        if line_str.starts_with("* ") {
+            line_str = format!("• {}", &line_str[2..]);
+        }
+
+        // Fix inline code wrapped in bold asterisks like **`code`**
+        while let Some(start) = line_str.find("**`") {
+            if let Some(end) = line_str[start + 3..].find("`**") {
+                let inner_code = &line_str[start + 3..start + 3 + end];
+                let replacement = format!("`{}`", inner_code);
+                line_str.replace_range(start..start + 3 + end + 3, &replacement);
+            } else {
+                break;
+            }
+        }
+
+        // Adjust double asterisks `**` to Telegram's single asterisk `*` for bold outside code
+        line_str = adjust_markdown_bold(&line_str);
+
+        cleaned_lines.push(line_str);
     }
 
     cleaned_lines.join("\n").trim().to_string()
 }
+
 

@@ -1199,6 +1199,20 @@ const getServerDisplayName = (tc: any) => {
   if (tc.server_id === 'skills' || tc.server_name === 'Procedural Skills' || isProceduralSkillCall(tc)) {
     return t('memory.skill_command_server_name')
   }
+  if (tc.name === 'atena_web_search' || tc.name === 'atena_fetch_webpage') {
+    return t('memory.server_atena_web')
+  }
+  if (tc.name?.startsWith('atena_scratchpad_')) {
+    return t('memory.server_atena_scratchpad')
+  }
+  if (
+    tc.name?.startsWith('atena_schedule_') ||
+    tc.name === 'atena_list_scheduled_tasks' ||
+    tc.name === 'atena_cancel_scheduled_task' ||
+    tc.name === 'atena_run_scheduled_task'
+  ) {
+    return t('memory.server_atena_scheduler')
+  }
   if (tc.server_id === 'atena_native' || tc.server_id === 'atena' || tc.server_name?.includes('Atena Core')) {
     return t('memory.server_atena_native')
   }
@@ -1213,6 +1227,15 @@ const getToolDisplayName = (tc: any) => {
   if (tc.name === 'atena_search_episodes') return t('memory.native_search_episodes_title')
   if (tc.name === 'atena_read_episode') return t('memory.native_read_episode_title')
   if (tc.name === 'atena_search_memory') return t('memory.native_search_memory_title')
+  if (tc.name === 'atena_web_search') return t('memory.native_web_search_title')
+  if (tc.name === 'atena_fetch_webpage') return t('memory.native_fetch_webpage_title')
+  if (tc.name === 'atena_scratchpad_write') return t('memory.native_scratchpad_write_title')
+  if (tc.name === 'atena_scratchpad_read') return t('memory.native_scratchpad_read_title')
+  if (tc.name === 'atena_scratchpad_clear') return t('memory.native_scratchpad_clear_title')
+  if (tc.name === 'atena_schedule_task') return t('memory.native_schedule_task_title')
+  if (tc.name === 'atena_list_scheduled_tasks') return t('memory.native_list_scheduled_tasks_title')
+  if (tc.name === 'atena_cancel_scheduled_task') return t('memory.native_cancel_scheduled_task_title')
+  if (tc.name === 'atena_run_scheduled_task') return t('memory.native_run_scheduled_task_title')
   if (tc.name === 'loading_tool') return t('chat.generating_tool_call')
   if (tc.label) return tc.label
   if (props.mcpTools && props.mcpTools.length > 0) {
@@ -1958,6 +1981,15 @@ const getToolDescription = (tc: any) => {
   if (tc.name === 'atena_search_episodes') return t('memory.native_search_episodes_desc')
   if (tc.name === 'atena_read_episode') return t('memory.native_read_episode_desc')
   if (tc.name === 'atena_search_memory') return t('memory.native_search_memory_desc')
+  if (tc.name === 'atena_web_search') return t('memory.native_web_search_desc')
+  if (tc.name === 'atena_fetch_webpage') return t('memory.native_fetch_webpage_desc')
+  if (tc.name === 'atena_scratchpad_write') return t('memory.native_scratchpad_write_desc')
+  if (tc.name === 'atena_scratchpad_read') return t('memory.native_scratchpad_read_desc')
+  if (tc.name === 'atena_scratchpad_clear') return t('memory.native_scratchpad_clear_desc')
+  if (tc.name === 'atena_schedule_task') return t('memory.native_schedule_task_desc')
+  if (tc.name === 'atena_list_scheduled_tasks') return t('memory.native_list_scheduled_tasks_desc')
+  if (tc.name === 'atena_cancel_scheduled_task') return t('memory.native_cancel_scheduled_task_desc')
+  if (tc.name === 'atena_run_scheduled_task') return t('memory.native_run_scheduled_task_desc')
   if (tc.description) return tc.description
   if (tc.status === 'pending_approval') return t('chat.awaiting_authorization')
   if (tc.status === 'executing') return t('chat.tool_call_executing_msg')

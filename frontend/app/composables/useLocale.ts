@@ -8,6 +8,8 @@ import 'dayjs/locale/zh-cn'
 import 'dayjs/locale/ru'
 
 
+import { invoke } from '@tauri-apps/api/core'
+
 export interface LocaleOption {
   code: 'en' | 'pt-BR' | 'es' | 'zh-CN' | 'ru'
   name: string
@@ -75,6 +77,7 @@ export function useAppLocale() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('atena_locale', newLocale)
       }
+      invoke('update_tray_locale', { locale: newLocale }).catch(() => {})
     }
   }
 

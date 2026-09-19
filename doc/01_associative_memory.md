@@ -149,7 +149,7 @@ To allow end users full control over token consumption and contextual injection,
    - When paused, factual associations are skipped during prompt building and no facts are auto-learned.
 2. **Skills & Automations (`enable_skills_memory` - Procedural Layer):**
    - Injects learned step-by-step recipes and procedural skill execution instructions.
-   - When paused, procedural skills are omitted from the inference context and procedural execution tools are suppressed.
+   - When paused, procedural skills (`create_procedural_skill`, `update_procedural_skill`, `run_skill_script`, `run_command`) are omitted from the inference context and suppressed. Core native tools (web search, webpage reader, task scratchpad, routine scheduler) remain independent and fully accessible.
 3. **Logbook / Diary (`enable_episodic_memory` - Episodic Layer):**
    - Manages chronological turn continuity and persists user/assistant dialogue turns into the daily wakefulness buffer (`diario_vigilia.atena`) and linked episodic Markdown logs.
    - When paused, past turn episodes are not retrieved and new wakefulness events are suspended.
