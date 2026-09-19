@@ -1587,7 +1587,8 @@ const handleSendMessage = async (payload: any) => {
     timestamp: new Date().toISOString(),
     is_streaming: true,
     tokens_count: 0,
-    generation_speed_tps: 0
+    generation_speed_tps: 0,
+    time_to_first_token_ms: 0
   }
 
   currentSession.value.messages.push(assistantMsg)
@@ -1622,6 +1623,14 @@ const handleSendMessage = async (payload: any) => {
         targetMsg.is_streaming = !chunk.is_done
         if (chunk.metrics) {
           targetMsg.metrics = chunk.metrics
+          if (chunk.metrics.time_to_first_token_ms) {
+            targetMsg.time_to_first_token_ms = chunk.metrics.time_to_first_token_ms
+          }
+        }
+
+        // Measure time to first token on first incoming chunk with content or thinking
+        if (!targetMsg.time_to_first_token_ms && ((chunk.content && chunk.content.length > 0) || (chunk.thinking && chunk.thinking.length > 0))) {
+          targetMsg.time_to_first_token_ms = Math.max(1, Date.now() - startTime)
         }
 
         if (chunk.tool_calls && chunk.tool_calls.length > 0) {
@@ -1647,6 +1656,13 @@ const handleSendMessage = async (payload: any) => {
 
         if (chunk.is_done) {
           isGenerating.value = false
+          // Ensure time_to_first_token_ms is populated in targetMsg.metrics if not present
+          if (targetMsg.time_to_first_token_ms) {
+            if (!targetMsg.metrics) targetMsg.metrics = {}
+            if (!targetMsg.metrics.time_to_first_token_ms) {
+              targetMsg.metrics.time_to_first_token_ms = targetMsg.time_to_first_token_ms
+            }
+          }
           // Filter out any unfinished streaming placeholders upon completion
           if (targetMsg.tool_calls && targetMsg.tool_calls.length > 0) {
             targetMsg.tool_calls = targetMsg.tool_calls.filter((tc: any) => tc.status !== 'streaming')
@@ -2132,7 +2148,8 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
     timestamp: new Date().toISOString(),
     is_streaming: true,
     tokens_count: 0,
-    generation_speed_tps: 0
+    generation_speed_tps: 0,
+    time_to_first_token_ms: 0
   }
   currentSession.value.messages.push(followUpMsg)
   isGenerating.value = true
@@ -2184,7 +2201,16 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
         target.is_streaming = !chunk.is_done
         if (chunk.metrics) {
           target.metrics = chunk.metrics
+          if (chunk.metrics.time_to_first_token_ms) {
+            target.time_to_first_token_ms = chunk.metrics.time_to_first_token_ms
+          }
         }
+
+        // Measure time to first token on first incoming chunk with content or thinking
+        if (!target.time_to_first_token_ms && ((chunk.content && chunk.content.length > 0) || (chunk.thinking && chunk.thinking.length > 0))) {
+          target.time_to_first_token_ms = Math.max(1, Date.now() - startTime)
+        }
+
         if (chunk.tool_calls && chunk.tool_calls.length > 0) {
           mergeToolCallsInPlace(target, chunk.tool_calls)
         }
@@ -2203,6 +2229,13 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
 
         if (chunk.is_done) {
           isGenerating.value = false
+          // Ensure time_to_first_token_ms is populated in target.metrics if not present
+          if (target.time_to_first_token_ms) {
+            if (!target.metrics) target.metrics = {}
+            if (!target.metrics.time_to_first_token_ms) {
+              target.metrics.time_to_first_token_ms = target.time_to_first_token_ms
+            }
+          }
           // Filter out any unfinished streaming placeholders upon completion
           if (target.tool_calls && target.tool_calls.length > 0) {
             target.tool_calls = target.tool_calls.filter((tc: any) => tc.status !== 'streaming')

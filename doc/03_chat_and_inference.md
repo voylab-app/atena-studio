@@ -22,7 +22,9 @@ Atena Studio supports strictly local inference (with native hardware acceleratio
 The interface calculates generation performance token by token in real time:
 
 * **Generation Speed (TPS)**: Displays the live token output rate in tokens per second ($tok/s$).
+* **Time to First Token (TTFT)**: Tracks prompt evaluation latency and latency to first generated token directly in the message bottom toolbar.
 * **Token Counts**: Prompt input tokens, reasoning/thinking tokens, and completion output tokens.
+* **Message Bottom Toolbar**: Modern footer bar containing quick actions (Listen/TTS, Copy, Delete) on the left and performance badges (KV Cache, Speed, TTFT, Tokens) on the right with quick access to the Efficiency Modal.
 * **Memory Consumption**:
   * **AI Model Memory (VRAM / Unified Memory)**: Exact memory allocated by the loaded model.
   * **Global System RAM**: Visual breakdown between AI consumption, other applications, and free system memory.

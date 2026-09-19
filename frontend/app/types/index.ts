@@ -44,6 +44,7 @@ export interface ChatMessage {
   timestamp: string
   tokens_count?: number
   generation_speed_tps?: number
+  time_to_first_token_ms?: number
   is_streaming?: boolean
   metrics?: GenerationMetrics | null
   [key: string]: any

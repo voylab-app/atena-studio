@@ -164,6 +164,11 @@ export function formatSessionToMarkdown(session?: Session | null, activeModel?: 
       if (msg.generation_speed_tps) {
         metaStr += ` • ${Number(msg.generation_speed_tps).toFixed(1)} t/s`
       }
+      const ttft = msg.time_to_first_token_ms || msg.metrics?.time_to_first_token_ms
+      if (ttft && ttft > 0) {
+        const ttftStr = ttft < 1000 ? `${Math.round(ttft)}ms` : `${(ttft / 1000).toFixed(2)}s`
+        metaStr += ` • ${ttftStr} TTFT`
+      }
       if (msg.tokens_count) {
         metaStr += ` • ${msg.tokens_count} tok`
       }

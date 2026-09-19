@@ -15,84 +15,6 @@
       </div>
 
       <span class="text-[10px] font-mono text-slate-500">{{ formattedTime }}</span>
-
-      <!-- Metrics for Assistant (oculto quando é erro de modelo não selecionado) -->
-      <template v-if="!isUser && showEfficiencyMetrics !== false && !isModelMissingError">
-        <span
-          v-if="message.metrics && message.metrics.cache_efficiency_pct !== undefined && message.metrics.cache_efficiency_pct > 0"
-          class="text-teal-300 font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-teal-500/15 border border-teal-500/25 flex items-center gap-1 cursor-help"
-          :title="$t('chat.kv_cache_tooltip', { cached: message.metrics.cached_tokens, prefill: message.metrics.prefill_tokens, prompt: message.metrics.prompt_tokens })"
-        >
-          <Zap class="w-2.5 h-2.5 text-teal-400" />
-          <span>{{ message.metrics.cache_efficiency_pct.toFixed(0) }}% Cache</span>
-        </span>
-        <span v-if="message.generation_speed_tps || (message.metrics && message.metrics.generation_speed_tps)" class="text-emerald-400 font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-          {{ Number((message.metrics && message.metrics.generation_speed_tps) || message.generation_speed_tps).toFixed(1) }} t/s
-        </span>
-        <span
-          v-if="message.tokens_count || (message.metrics && message.metrics.completion_tokens)"
-          :class="[
-            'font-mono text-[10.5px]',
-            isTokenLimitReached
-              ? 'text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30'
-              : 'text-slate-400'
-          ]"
-          :title="isTokenLimitReached ? $t('chat.token_limit_reached') : ''"
-        >
-          <span v-if="!isTokenLimitReached">• </span>
-          <span>{{ (message.metrics && message.metrics.completion_tokens) || message.tokens_count }} tok</span>
-          <span v-if="isTokenLimitReached" class="font-sans ml-1 text-[9.5px] uppercase font-bold tracking-wider text-amber-300">{{ $t('chat.limit') }}</span>
-        </span>
-      </template>
-
-      <!-- Text-to-Speech (TTS) Action for Assistant (apenas para respostas válidas) -->
-      <button
-        v-if="!isUser && message.content && !message.is_streaming && !isModelMissingError"
-        @click="handleTtsClick"
-        class="px-2 py-0.5 rounded-lg text-[10.5px] transition-all flex items-center gap-1 border cursor-pointer shadow-sm active:scale-95"
-        :class="[
-          isThisSpeaking
-            ? 'bg-purple-600/25 text-purple-300 border-purple-500/50 hover:bg-purple-600/35 shadow-purple-500/10'
-            : isThisPaused
-            ? 'bg-amber-600/25 text-amber-300 border-amber-500/50 hover:bg-amber-600/35'
-            : 'bg-[#141826] hover:bg-[#1c2236] text-slate-400 hover:text-slate-200 border-[#22283b]'
-        ]"
-        :title="isThisSpeaking ? $t('chat.tts_pause_title') : (isThisPaused ? $t('chat.tts_resume_title') : $t('chat.tts_listen_title'))"
-      >
-        <Volume2 v-if="!isThisSpeaking && !isThisPaused" class="w-3 h-3 text-purple-400" />
-        <VolumeX v-else-if="isThisPaused" class="w-3 h-3 text-amber-400" />
-        <div v-else class="flex items-center gap-0.5">
-          <span class="w-1 h-2.5 bg-purple-400 rounded-full animate-bounce"></span>
-          <span class="w-1 h-3.5 bg-purple-300 rounded-full animate-bounce [animation-delay:0.15s]"></span>
-          <span class="w-1 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
-        </div>
-        <span>{{ isThisSpeaking ? $t('chat.tts_listening') : (isThisPaused ? $t('chat.tts_paused') : $t('chat.tts_listen')) }}</span>
-      </button>
-      
-      <!-- Copy Action -->
-      <button
-        @click="copyText(message.content)"
-        class="px-2 py-0.5 rounded-lg bg-[#141826] hover:bg-[#1c2236] text-[10.5px] text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1 border border-[#22283b] cursor-pointer shadow-sm active:scale-95"
-        :title="$t('chat.copy_message')"
-      >
-        <component :is="copied ? Check : Copy" class="w-3 h-3" />
-        <span>{{ copied ? $t('chat.code_copied') : $t('common.copy') }}</span>
-      </button>
-
-      <!-- Delete Action -->
-      <button
-        @click="handleDeleteClick"
-        :class="[
-          'px-2 py-0.5 rounded-lg text-[10.5px] transition-all flex items-center gap-1 border cursor-pointer shadow-sm active:scale-95',
-          confirmingDelete
-            ? 'bg-rose-600 text-white border-rose-500 hover:bg-rose-700 animate-pulse'
-            : 'bg-[#141826] hover:bg-rose-500/15 text-slate-400 hover:text-rose-300 border-[#22283b] hover:border-rose-500/30'
-        ]"
-        :title="confirmingDelete ? $t('chat.confirm_delete_message') : $t('chat.delete_message')"
-      >
-        <Trash2 class="w-3 h-3" />
-        <span>{{ confirmingDelete ? $t('chat.delete_confirm') : $t('common.delete') }}</span>
-      </button>
     </div>
 
     <!-- Bubble Card Container -->
@@ -872,6 +794,147 @@
       </div>
     </div>
 
+    <!-- User Bottom Actions (Copiar, Excluir) -->
+    <div
+      v-if="isUser"
+      class="flex items-center gap-1.5 mt-1.5 px-0.5 select-none"
+    >
+      <!-- Copy Action -->
+      <button
+        @click="copyText(message.content)"
+        class="px-2 py-0.5 rounded-lg bg-[#141826] hover:bg-[#1c2236] text-[10.5px] text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1 border border-[#22283b] cursor-pointer shadow-sm active:scale-95"
+        :title="$t('chat.copy_message')"
+      >
+        <component :is="copied ? Check : Copy" class="w-3 h-3" />
+        <span>{{ copied ? $t('chat.code_copied') : $t('common.copy') }}</span>
+      </button>
+
+      <!-- Delete Action -->
+      <button
+        @click="handleDeleteClick"
+        :class="[
+          'px-2 py-0.5 rounded-lg text-[10.5px] transition-all flex items-center gap-1 border cursor-pointer shadow-sm active:scale-95',
+          confirmingDelete
+            ? 'bg-rose-600 text-white border-rose-500 hover:bg-rose-700 animate-pulse'
+            : 'bg-[#141826] hover:bg-rose-500/15 text-slate-400 hover:text-rose-300 border-[#22283b] hover:border-rose-500/30'
+        ]"
+        :title="confirmingDelete ? $t('chat.confirm_delete_message') : $t('chat.delete_message')"
+      >
+        <Trash2 class="w-3 h-3" />
+        <span>{{ confirmingDelete ? $t('chat.delete_confirm') : $t('common.delete') }}</span>
+      </button>
+    </div>
+
+    <!-- Assistant Bottom Toolbar: Actions on Left, Efficiency & TTFT Metrics on Right -->
+    <div
+      v-else-if="!isModelMissingError"
+      class="flex items-center justify-between gap-2.5 mt-1.5 px-0.5 text-xs text-slate-400 select-none flex-wrap w-full max-w-full"
+    >
+      <!-- Left: Action Buttons (Ouvir, Copiar, Excluir) - only displayed after AI finishes generating -->
+      <div v-if="!message.is_streaming && (message.content || (message.tool_calls && message.tool_calls.length > 0))" class="flex items-center gap-1.5 flex-wrap">
+        <!-- Text-to-Speech (TTS) Action for Assistant (apenas para respostas válidas com texto) -->
+        <button
+          v-if="message.content && message.content.trim().length > 0"
+          @click="handleTtsClick"
+          class="px-2 py-0.5 rounded-lg text-[10.5px] transition-all flex items-center gap-1 border cursor-pointer shadow-sm active:scale-95"
+          :class="[
+            isThisSpeaking
+              ? 'bg-purple-600/25 text-purple-300 border-purple-500/50 hover:bg-purple-600/35 shadow-purple-500/10'
+              : isThisPaused
+              ? 'bg-amber-600/25 text-amber-300 border-amber-500/50 hover:bg-amber-600/35'
+              : 'bg-[#141826] hover:bg-[#1c2236] text-slate-400 hover:text-slate-200 border-[#22283b]'
+          ]"
+          :title="isThisSpeaking ? $t('chat.tts_pause_title') : (isThisPaused ? $t('chat.tts_resume_title') : $t('chat.tts_listen_title'))"
+        >
+          <Volume2 v-if="!isThisSpeaking && !isThisPaused" class="w-3 h-3 text-purple-400" />
+          <VolumeX v-else-if="isThisPaused" class="w-3 h-3 text-amber-400" />
+          <div v-else class="flex items-center gap-0.5">
+            <span class="w-1 h-2.5 bg-purple-400 rounded-full animate-bounce"></span>
+            <span class="w-1 h-3.5 bg-purple-300 rounded-full animate-bounce [animation-delay:0.15s]"></span>
+            <span class="w-1 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
+          </div>
+          <span>{{ isThisSpeaking ? $t('chat.tts_listening') : (isThisPaused ? $t('chat.tts_paused') : $t('chat.tts_listen')) }}</span>
+        </button>
+
+        <!-- Copy Action -->
+        <button
+          @click="copyText(message.content)"
+          class="px-2 py-0.5 rounded-lg bg-[#141826] hover:bg-[#1c2236] text-[10.5px] text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1 border border-[#22283b] cursor-pointer shadow-sm active:scale-95"
+          :title="$t('chat.copy_message')"
+        >
+          <component :is="copied ? Check : Copy" class="w-3 h-3" />
+          <span>{{ copied ? $t('chat.code_copied') : $t('common.copy') }}</span>
+        </button>
+
+        <!-- Delete Action -->
+        <button
+          @click="handleDeleteClick"
+          :class="[
+            'px-2 py-0.5 rounded-lg text-[10.5px] transition-all flex items-center gap-1 border cursor-pointer shadow-sm active:scale-95',
+            confirmingDelete
+              ? 'bg-rose-600 text-white border-rose-500 hover:bg-rose-700 animate-pulse'
+              : 'bg-[#141826] hover:bg-rose-500/15 text-slate-400 hover:text-rose-300 border-[#22283b] hover:border-rose-500/30'
+          ]"
+          :title="confirmingDelete ? $t('chat.confirm_delete_message') : $t('chat.delete_message')"
+        >
+          <Trash2 class="w-3 h-3" />
+          <span>{{ confirmingDelete ? $t('chat.delete_confirm') : $t('common.delete') }}</span>
+        </button>
+      </div>
+      <div v-else class="flex-1"></div>
+
+      <!-- Right: Performance Metrics (Efficiency, Speed, TTFT, Tokens) -->
+      <div v-if="showEfficiencyMetrics !== false" class="flex items-center gap-1.5 flex-wrap">
+        <!-- KV Cache Efficiency Badge -->
+        <span
+          v-if="message.metrics && message.metrics.cache_efficiency_pct !== undefined && message.metrics.cache_efficiency_pct > 0"
+          @click="$emit('openEfficiencyModal')"
+          class="text-teal-300 font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-teal-500/15 border border-teal-500/25 flex items-center gap-1 cursor-pointer hover:bg-teal-500/25 transition-colors"
+          :title="$t('chat.kv_cache_tooltip', { cached: message.metrics.cached_tokens, prefill: message.metrics.prefill_tokens, prompt: message.metrics.prompt_tokens })"
+        >
+          <Zap class="w-2.5 h-2.5 text-teal-400" />
+          <span>{{ message.metrics.cache_efficiency_pct.toFixed(0) }}% Cache</span>
+        </span>
+
+        <!-- Generation Speed (t/s) -->
+        <span
+          v-if="message.generation_speed_tps || (message.metrics && message.metrics.generation_speed_tps)"
+          @click="$emit('openEfficiencyModal')"
+          class="text-emerald-400 font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 cursor-pointer hover:bg-emerald-500/20 transition-colors"
+          :title="$t('modals.efficiency.avg_generation_speed')"
+        >
+          {{ Number((message.metrics && message.metrics.generation_speed_tps) || message.generation_speed_tps).toFixed(1) }} t/s
+        </span>
+
+        <!-- Time to First Token (TTFT) -->
+        <span
+          v-if="formattedTtft"
+          @click="$emit('openEfficiencyModal')"
+          class="text-purple-300 font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 flex items-center gap-1 cursor-pointer hover:bg-purple-500/20 transition-colors"
+          :title="`${$t('chat.time_to_first_token')}: ${formattedTtft}`"
+        >
+          <Clock class="w-2.5 h-2.5 text-purple-400" />
+          <span>{{ formattedTtft }} TTFT</span>
+        </span>
+
+        <!-- Completion Tokens Badge -->
+        <span
+          v-if="message.tokens_count || (message.metrics && message.metrics.completion_tokens)"
+          :class="[
+            'font-mono text-[10.5px]',
+            isTokenLimitReached
+              ? 'text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30'
+              : 'text-slate-400'
+          ]"
+          :title="isTokenLimitReached ? $t('chat.token_limit_reached') : ''"
+        >
+          <span v-if="!isTokenLimitReached">• </span>
+          <span>{{ (message.metrics && message.metrics.completion_tokens) || message.tokens_count }} tok</span>
+          <span v-if="isTokenLimitReached" class="font-sans ml-1 text-[9.5px] uppercase font-bold tracking-wider text-amber-300">{{ $t('chat.limit') }}</span>
+        </span>
+      </div>
+    </div>
+
     <!-- Modal de Justificativa de Recusa de Ferramenta(s) -->
     <Teleport to="body">
       <div
@@ -1017,7 +1080,8 @@ import {
   Code2,
   Trash2,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Clock
 } from 'lucide-vue-next'
 import {
   speakText,
@@ -1056,6 +1120,7 @@ const emit = defineEmits<{
   (e: 'selectTab', tab: string): void
   (e: 'continueGeneration', message: ChatMessage): void
   (e: 'openParams'): void
+  (e: 'openEfficiencyModal'): void
   (e: 'toolLabelUpdated', payload: any): void
   (e: 'deleteMessage', messageId: string): void
 }>()
@@ -1068,6 +1133,15 @@ const isTokenLimitReached = computed(() => {
 
 const tokenLimitCount = computed(() => {
   return (props.message?.metrics && props.message.metrics.completion_tokens) || props.message?.tokens_count || 0
+})
+
+const formattedTtft = computed(() => {
+  const ms = props.message?.time_to_first_token_ms || props.message?.metrics?.time_to_first_token_ms
+  if (!ms || ms <= 0) return null
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`
+  }
+  return `${(ms / 1000).toFixed(2)}s`
 })
 
 const isModelMissingError = computed(() => {
