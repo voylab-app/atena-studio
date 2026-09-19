@@ -571,13 +571,7 @@ impl BackgroundScheduler {
                         .or_else(|| app_cfg.gateways.telegram.allowed_user_ids.first().copied());
 
                     if let Some(chat_id) = target_chat_id {
-                        let mut telegram_msg = format!("📅 *{}*\n────────────────────\n", task.name);
-                        if !tools_used_summary.is_empty() {
-                            telegram_msg.push_str("🛠️ _Ferramentas:_ ");
-                            telegram_msg.push_str(&tools_used_summary.join(", "));
-                            telegram_msg.push_str("\n\n");
-                        }
-                        telegram_msg.push_str(&output);
+                        let telegram_msg = format!("📅 *{}*\n────────────────────\n{}", task.name, output);
 
                         let _ = crate::services::gateways::telegram::send_proactive_telegram_message(
                             &bot_token,

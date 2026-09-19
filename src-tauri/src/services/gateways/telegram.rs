@@ -615,6 +615,7 @@ pub async fn send_proactive_telegram_message(
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
     let base_url = format!("https://api.telegram.org/bot{}", token);
-    send_chunked_telegram_message(&client, &base_url, chat_id, text).await;
+    let sanitized_text = crate::services::gateways::strip_internal_tags(text);
+    send_chunked_telegram_message(&client, &base_url, chat_id, &sanitized_text).await;
     Ok(())
 }
