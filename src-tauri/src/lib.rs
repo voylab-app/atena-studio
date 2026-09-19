@@ -3081,7 +3081,7 @@ async fn memory_get_vigilia_buffer() -> Result<Vec<VigiliaEvent>, String> {
     Ok(MemoryGraphEngine::load_vigilia_buffer())
 }
 
-/// Otimização estrutural, análise de conexões e poda do grafo de memória
+/// Structural optimization, connection analysis, and memory graph pruning
 #[command]
 async fn memory_optimize_and_prune(
     state: State<'_, AppState>,

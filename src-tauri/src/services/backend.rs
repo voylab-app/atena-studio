@@ -71,6 +71,8 @@ impl StreamingThinkingState {
             "<|channel>",
             "<start_of_turn>",
             "<end_of_turn>",
+            "<turn|>",
+            "<|turn>",
             "<|thought|>",
             "<|/thought|>",
             "<|start_thought|>",
@@ -1039,8 +1041,11 @@ impl BackendManager {
                     .arg(host)
                     .arg("--port")
                     .arg(port.to_string());
-                if !is_vlm {
+                if is_vlm {
+                    cmd.arg("--enable-thinking");
+                } else {
                     cmd.arg("--prompt-cache-size").arg("1");
+                    cmd.arg("--chat-template-args").arg("{\"enable_thinking\":true}");
                 }
                 cmd.stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -1068,8 +1073,11 @@ impl BackendManager {
                     .arg(host)
                     .arg("--port")
                     .arg(port.to_string());
-                if !is_vlm {
+                if is_vlm {
+                    cmd.arg("--enable-thinking");
+                } else {
                     cmd.arg("--prompt-cache-size").arg("1");
+                    cmd.arg("--chat-template-args").arg("{\"enable_thinking\":true}");
                 }
                 cmd.stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -1085,8 +1093,11 @@ impl BackendManager {
                     .arg(host)
                     .arg("--port")
                     .arg(port.to_string());
-                if !is_vlm {
+                if is_vlm {
+                    cmd.arg("--enable-thinking");
+                } else {
                     cmd.arg("--prompt-cache-size").arg("1");
+                    cmd.arg("--chat-template-args").arg("{\"enable_thinking\":true}");
                 }
                 cmd.stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -1099,8 +1110,14 @@ impl BackendManager {
                             .arg("--host")
                             .arg(host)
                             .arg("--port")
-                            .arg(port.to_string())
-                            .stdout(std::process::Stdio::piped())
+                            .arg(port.to_string());
+                        if is_vlm {
+                            alt.arg("--enable-thinking");
+                        } else {
+                            alt.arg("--prompt-cache-size").arg("1");
+                            alt.arg("--chat-template-args").arg("{\"enable_thinking\":true}");
+                        }
+                        alt.stdout(std::process::Stdio::piped())
                             .stderr(std::process::Stdio::piped());
                         alt.spawn()
                     })
@@ -2962,6 +2979,7 @@ impl BackendManager {
                     });
 
                     if let Some(enable_think) = params.enable_thinking {
+                        payload["enable_thinking"] = json!(enable_think);
                         payload["chat_template_args"] = json!({ "enable_thinking": enable_think });
                     }
 
@@ -3029,6 +3047,10 @@ impl BackendManager {
                                 "max_tokens": params.max_tokens,
                                 "stream": true
                             });
+                            if let Some(enable_think) = params.enable_thinking {
+                                fallback_payload["enable_thinking"] = json!(enable_think);
+                                fallback_payload["chat_template_args"] = json!({ "enable_thinking": enable_think });
+                            }
                             if let Some(tools) = &params.mcp_tools {
                                 let tools_payload: Vec<serde_json::Value> = tools.iter().filter(|t| t.enabled).map(|t| {
                                     json!({
@@ -4366,7 +4388,7 @@ impl BackendManager {
                 // 1. Try HTTP API if server is up
                 let endpoint = format!("http://{}:{}/v1/chat/completions", mlx_host, mlx_port);
                 if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(30)).build() {
-                    let payload = json!({
+                    let mut payload = json!({
                         "model": model.local_path.clone().unwrap_or_else(|| model.id.clone()),
                         "messages": json_messages,
                         "temperature": params.temperature,
@@ -4374,6 +4396,11 @@ impl BackendManager {
                         "max_tokens": params.max_tokens,
                         "stream": false
                     });
+
+                    if let Some(enable_think) = params.enable_thinking {
+                        payload["enable_thinking"] = json!(enable_think);
+                        payload["chat_template_args"] = json!({ "enable_thinking": enable_think });
+                    }
 
                     let t_req = std::time::Instant::now();
                     if let Ok(resp) = client.post(&endpoint).json(&payload).send().await {
