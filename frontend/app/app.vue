@@ -1435,8 +1435,43 @@ const handleStopGeneration = () => {
   saveSessions()
 }
 
+const isToolActiveForInference = (t: any, isPrivate = false): boolean => {
+  if (!t || t.enabled === false) return false
+
+  const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
+  const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
+  const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
+  const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
+
+  if (isFactsDisabled && t.tool?.name === 'atena_search_memory') {
+    return false
+  }
+  if (
+    isEpisodicDisabled &&
+    (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
+  ) {
+    return false
+  }
+
+  if (isSkillsDisabled) {
+    if (
+      t.server_id === 'skills' ||
+      t.tool?.name === 'run_command' ||
+      t.tool?.name === 'run_skill_command' ||
+      t.tool?.name === 'run_skill_script' ||
+      t.tool?.name === 'create_procedural_skill' ||
+      t.tool?.name === 'update_procedural_skill' ||
+      t.tool?.name === 'edit_procedural_skill'
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 const activeMcpToolsCount = computed(() => {
-  return mcpTools.value.filter((t) => t.enabled && t.server_id !== 'atena_native' && t.server_id !== 'atena' && t.server_id !== 'skills').length
+  return mcpTools.value.filter((t) => isToolActiveForInference(t, false)).length
 })
 
 const fetchMcpTools = async () => {
@@ -1708,36 +1743,7 @@ const handleSendMessage = async (payload: any) => {
     const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
     const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
 
-    const activeTools = mcpTools.value.filter((t) => {
-      // 1. Cognitive Memory layers filtering (facts and episodic memory)
-      if (isFactsDisabled && t.tool?.name === 'atena_search_memory') {
-        return false
-      }
-      if (
-        isEpisodicDisabled &&
-        (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
-      ) {
-        return false
-      }
-
-      // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
-      if (isSkillsDisabled) {
-        if (
-          t.server_id === 'skills' ||
-          t.tool?.name === 'run_command' ||
-          t.tool?.name === 'run_skill_command' ||
-          t.tool?.name === 'run_skill_script' ||
-          t.tool?.name === 'create_procedural_skill' ||
-          t.tool?.name === 'update_procedural_skill' ||
-          t.tool?.name === 'edit_procedural_skill'
-        ) {
-          return false
-        }
-      }
-
-      // 3. Native utility tools (web search, webpage fetch, task scratchpad, scheduler) & external MCP tools remain enabled
-      return t.enabled !== false
-    })
+    const activeTools = mcpTools.value.filter((t) => isToolActiveForInference(t, isPrivate))
 
     const inferenceParams = {
       ...params.value,
@@ -2269,36 +2275,7 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
     const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
     const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
 
-    const activeTools = mcpTools.value.filter((t) => {
-      // 1. Cognitive Memory layers filtering (facts and episodic memory)
-      if (isFactsDisabled && t.tool?.name === 'atena_search_memory') {
-        return false
-      }
-      if (
-        isEpisodicDisabled &&
-        (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
-      ) {
-        return false
-      }
-
-      // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
-      if (isSkillsDisabled) {
-        if (
-          t.server_id === 'skills' ||
-          t.tool?.name === 'run_command' ||
-          t.tool?.name === 'run_skill_command' ||
-          t.tool?.name === 'run_skill_script' ||
-          t.tool?.name === 'create_procedural_skill' ||
-          t.tool?.name === 'update_procedural_skill' ||
-          t.tool?.name === 'edit_procedural_skill'
-        ) {
-          return false
-        }
-      }
-
-      // 3. Native utility tools (web search, webpage fetch, task scratchpad, scheduler) & external MCP tools remain enabled
-      return t.enabled !== false
-    })
+    const activeTools = mcpTools.value.filter((t) => isToolActiveForInference(t, isPrivate))
 
     const inferenceParams = {
       ...params.value,

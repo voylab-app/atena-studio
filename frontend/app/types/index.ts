@@ -241,7 +241,7 @@ export interface McpToolCall {
 export interface McpServerConfig {
   id: string
   name: string
-  transport: 'stdio' | 'sse' | 'http' | string
+  transport: 'stdio' | 'sse' | 'http' | 'builtin' | string
   command?: string | null
   args?: string[] | null
   env?: Record<string, string> | null

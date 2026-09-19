@@ -2178,6 +2178,16 @@ pub async fn execute_tool_call_internal(
         server_id
     };
 
+    let servers = state.mcp_manager.get_servers().await;
+    if let Some(server) = servers.iter().find(|s| s.id == effective_server) {
+        if !server.enabled {
+            return Err(format!("Tool server '{}' is disabled.", effective_server));
+        }
+        if server.disabled_tools.contains(&tool_name.to_string()) {
+            return Err(format!("Tool '{}' is disabled in server settings.", tool_name));
+        }
+    }
+
     if effective_server == "atena_native" || effective_server == "atena" {
         match tool_name {
             "atena_search_episodes" => {
