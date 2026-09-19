@@ -363,6 +363,7 @@
     "diff_copy_btn": "复制 Diff",
     "local_model": "本地模型",
     "generating_response": "正在生成回答...",
+    "processing_prompt": "正在处理提示词",
     "generating_tool_call": "正在生成工具...",
     "generating_tool_params": "正在生成工具参数与指令...",
     "memory_recorded_ack": "信息已成功保存至记忆中。",

@@ -37,29 +37,15 @@ impl WebTools {
             }
         }
 
-        // 1b. Try DuckDuckGo HTML with normalized query
-        if normalized != trimmed_query {
-            if let Ok(ddg_norm) = Self::search_duckduckgo_html(&client, &normalized, limit).await {
-                let filtered = Self::filter_irrelevant_results(&normalized, ddg_norm);
-                if !filtered.is_empty() {
-                    return Ok(filtered);
-                }
+        // 1b. Fallback engine: DuckDuckGo Lite (static HTML, no JS, resilient)
+        if let Ok(lite_results) = Self::search_duckduckgo_lite(&client, trimmed_query, limit).await {
+            let filtered = Self::filter_irrelevant_results(trimmed_query, lite_results);
+            if !filtered.is_empty() {
+                return Ok(filtered);
             }
         }
 
-        // 2. Secondary engine: Headless browser simulation in native Tauri WebKit/WebView2
-        // Executes full JavaScript, avoids bot captchas, and extracts rendered DOM
-        if crate::services::browser_engine::BrowserEngine::get_handle().is_some() {
-            log::info!("🌐 Using Headless Browser Engine for search: '{}'", normalized);
-            if let Ok(rendered_results) = crate::services::browser_engine::BrowserEngine::search_rendered(&normalized, limit).await {
-                let filtered = Self::filter_irrelevant_results(&normalized, rendered_results);
-                if !filtered.is_empty() {
-                    return Ok(filtered);
-                }
-            }
-        }
-
-        // 3. Tertiary engine: Bing search with strict topical relevance filtering
+        // 2. Secondary engine: Bing search with strict topical relevance filtering
         if let Ok(bing_results) = Self::search_bing(&client, trimmed_query, limit).await {
             let filtered = Self::filter_irrelevant_results(trimmed_query, bing_results);
             if !filtered.is_empty() {
@@ -68,6 +54,18 @@ impl WebTools {
         }
 
         if normalized != trimmed_query {
+            if let Ok(ddg_norm) = Self::search_duckduckgo_html(&client, &normalized, limit).await {
+                let filtered = Self::filter_irrelevant_results(&normalized, ddg_norm);
+                if !filtered.is_empty() {
+                    return Ok(filtered);
+                }
+            }
+            if let Ok(lite_norm) = Self::search_duckduckgo_lite(&client, &normalized, limit).await {
+                let filtered = Self::filter_irrelevant_results(&normalized, lite_norm);
+                if !filtered.is_empty() {
+                    return Ok(filtered);
+                }
+            }
             if let Ok(bing_norm) = Self::search_bing(&client, &normalized, limit).await {
                 let filtered = Self::filter_irrelevant_results(&normalized, bing_norm);
                 if !filtered.is_empty() {
@@ -76,7 +74,7 @@ impl WebTools {
             }
         }
 
-        // 4. Simplified topical query fallback for complex/long queries
+        // 3. Simplified topical query fallback for complex/long queries
         let kws = Self::extract_topical_keywords(&normalized);
         if kws.len() >= 3 {
             let simplified = kws[..kws.len().min(4)].join(" ");
@@ -87,18 +85,22 @@ impl WebTools {
                         return Ok(filtered);
                     }
                 }
-                if crate::services::browser_engine::BrowserEngine::get_handle().is_some() {
-                    if let Ok(rendered) = crate::services::browser_engine::BrowserEngine::search_rendered(&simplified, limit).await {
-                        let filtered = Self::filter_irrelevant_results(&simplified, rendered);
-                        if !filtered.is_empty() {
-                            return Ok(filtered);
-                        }
+                if let Ok(sim_lite) = Self::search_duckduckgo_lite(&client, &simplified, limit).await {
+                    let filtered = Self::filter_irrelevant_results(&simplified, sim_lite);
+                    if !filtered.is_empty() {
+                        return Ok(filtered);
+                    }
+                }
+                if let Ok(sim_bing) = Self::search_bing(&client, &simplified, limit).await {
+                    let filtered = Self::filter_irrelevant_results(&simplified, sim_bing);
+                    if !filtered.is_empty() {
+                        return Ok(filtered);
                     }
                 }
             }
         }
 
-        // 5. Quaternary engine: DuckDuckGo Instant Answer API (only if asking for definitions/facts)
+        // 4. Quaternary engine: DuckDuckGo Instant Answer API (only if asking for definitions/facts)
         if Self::query_is_asking_for_definition(trimmed_query) {
             if let Ok(ddg_api_results) = Self::search_duckduckgo_api(&client, trimmed_query, limit).await {
                 if !ddg_api_results.is_empty() {
@@ -400,6 +402,27 @@ impl WebTools {
         if results.is_empty() {
             results = Self::parse_duckduckgo_lite(&html, max_results);
         }
+        Ok(results)
+    }
+
+    /// Fallback search using DuckDuckGo Lite endpoint (pure HTML, zero-JS)
+    pub async fn search_duckduckgo_lite(client: &reqwest::Client, query: &str, max_results: usize) -> Result<Vec<WebSearchResult>, String> {
+        let url = format!("https://lite.duckduckgo.com/lite/?q={}", urlencoding(query));
+        let resp = client
+            .get(&url)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7")
+            .header("Cache-Control", "no-cache")
+            .send()
+            .await
+            .map_err(|e| format!("DuckDuckGo Lite search request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Ok(Vec::new());
+        }
+
+        let html = resp.text().await.unwrap_or_default();
+        let results = Self::parse_duckduckgo_lite(&html, max_results);
         Ok(results)
     }
 

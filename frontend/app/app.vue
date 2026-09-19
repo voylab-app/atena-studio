@@ -334,6 +334,7 @@ const loadingModelName = ref('')
 const loadingModelProgress = ref(0)
 const isScanning = ref(false)
 const isGenerating = ref(false)
+let activeGenerationId = 0
 const logs = ref<ServerRequestLog[]>([])
 const developerLogs = ref<DeveloperLogEntry[]>([])
 const mcpTools = ref<McpToolWithServer[]>([])
@@ -1421,14 +1422,19 @@ const handleDeleteMessage = (payload: any) => {
   }
 }
 
-const handleStopGeneration = () => {
+const handleStopGeneration = async () => {
+  activeGenerationId++
   isGenerating.value = false
+  try {
+    await invoke('stop_chat_generation')
+  } catch (_) {}
   if (currentSession.value && currentSession.value.messages) {
-    const lastAssistantMsg = [...currentSession.value.messages].reverse().find((m) => m.role === 'assistant')
-    if (lastAssistantMsg && lastAssistantMsg.is_streaming) {
-      lastAssistantMsg.is_streaming = false
-      if (!lastAssistantMsg.content && !lastAssistantMsg.thinking && (!lastAssistantMsg.tool_calls || lastAssistantMsg.tool_calls.length === 0)) {
-        lastAssistantMsg.content = t('chat.generation_interrupted')
+    for (const m of currentSession.value.messages) {
+      if (m.role === 'assistant' && m.is_streaming) {
+        m.is_streaming = false
+        if (!m.content && !m.thinking && (!m.tool_calls || m.tool_calls.length === 0)) {
+          m.content = t('chat.generation_interrupted')
+        }
       }
     }
   }
@@ -1621,9 +1627,15 @@ const handleSendMessage = async (payload: any) => {
     tool_calls: null,
     timestamp: new Date().toISOString(),
     is_streaming: true,
+    prompt_progress_pct: 0,
     tokens_count: 0,
     generation_speed_tps: 0,
     time_to_first_token_ms: 0
+  }
+
+  const thisGenId = ++activeGenerationId
+  for (const m of currentSession.value.messages) {
+    if (m.is_streaming) m.is_streaming = false
   }
 
   currentSession.value.messages.push(assistantMsg)
@@ -1649,7 +1661,7 @@ const handleSendMessage = async (payload: any) => {
     const channel = new Channel<any>()
 
     channel.onmessage = (chunk: any) => {
-      if (!isGenerating.value) return
+      if (thisGenId !== activeGenerationId || !isGenerating.value) return
 
       const targetMsg = currentSession.value.messages.find((m) => m.id === assistantMsgId)
       if (targetMsg) {
@@ -1679,7 +1691,7 @@ const handleSendMessage = async (payload: any) => {
 
         const elapsed = chunk.elapsed_ms || (Date.now() - startTime)
         if (chunk.metrics?.generation_speed_tps) {
-          targetMsg.generation_speed_tps = chunk.metrics.generation_speed_tps
+          targetMsg.generation_speed_tps = parseFloat(Number(chunk.metrics.generation_speed_tps).toFixed(1))
         } else if (elapsed > 0) {
           targetMsg.generation_speed_tps = parseFloat((tokCount / (elapsed / 1000)).toFixed(1))
         }
@@ -2144,6 +2156,10 @@ const processAutoTools = async (assistantMsg: any) => {
 
 // Trigger follow-up AI response with ALL tool results from the batch
 const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
+  const thisGenId = ++activeGenerationId
+  for (const m of currentSession.value.messages) {
+    if (m.is_streaming) m.is_streaming = false
+  }
   const followUpAssistantId = `msg-${Date.now()}-assistant-reply`
   const followUpMsg: ChatMessage = {
     id: followUpAssistantId,
@@ -2153,6 +2169,7 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
     tool_calls: null,
     timestamp: new Date().toISOString(),
     is_streaming: true,
+    prompt_progress_pct: 0,
     tokens_count: 0,
     generation_speed_tps: 0,
     time_to_first_token_ms: 0
@@ -2199,7 +2216,7 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
   try {
     const channel = new Channel<any>()
     channel.onmessage = (chunk: any) => {
-      if (!isGenerating.value) return
+      if (thisGenId !== activeGenerationId || !isGenerating.value) return
       const target = currentSession.value.messages.find((m) => m.id === followUpAssistantId)
       if (target) {
         target.content = chunk.content || ''
@@ -2225,7 +2242,7 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
         target.tokens_count = tokCount
         const elapsed = chunk.elapsed_ms || (Date.now() - startTime)
         if (chunk.metrics?.generation_speed_tps) {
-          target.generation_speed_tps = chunk.metrics.generation_speed_tps
+          target.generation_speed_tps = parseFloat(Number(chunk.metrics.generation_speed_tps).toFixed(1))
         } else if (elapsed > 0) {
           target.generation_speed_tps = parseFloat((tokCount / (elapsed / 1000)).toFixed(1))
         }
@@ -2734,14 +2751,33 @@ onMounted(async () => {
     })
     await listen<DeveloperLogEntry>('developer_log_entry', (event) => {
       if (event.payload) {
-        developerLogs.value.push(event.payload)
-        if (developerLogs.value.length > 1000) {
-          developerLogs.value.splice(0, developerLogs.value.length - 1000)
+        const existingIdx = developerLogs.value.findIndex((l) => l.id === event.payload.id)
+        if (existingIdx !== -1) {
+          developerLogs.value[existingIdx] = { ...event.payload }
+        } else {
+          developerLogs.value.push(event.payload)
+          if (developerLogs.value.length > 1000) {
+            developerLogs.value.splice(0, developerLogs.value.length - 1000)
+          }
         }
       }
     })
     await listen('server_logs_updated', () => {
       fetchLogs()
+    })
+    await listen<{ percent: number }>('inference_prompt_progress', (event) => {
+      if (event.payload && currentSession.value) {
+        const msgs = currentSession.value.messages
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const m = msgs[i]
+          if (m && m.role === 'assistant' && m.is_streaming) {
+            if (event.payload.percent === 0 || event.payload.percent >= (m.prompt_progress_pct ?? 0)) {
+              m.prompt_progress_pct = event.payload.percent
+            }
+            break
+          }
+        }
+      }
     })
     await listen('developer_logs_cleared', () => {
       developerLogs.value = []

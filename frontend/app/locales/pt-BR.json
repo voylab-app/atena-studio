@@ -363,6 +363,7 @@
     "diff_copy_btn": "Copiar Diff",
     "local_model": "Modelo Local",
     "generating_response": "Gerando resposta...",
+    "processing_prompt": "Processando prompt",
     "generating_tool_call": "Gerando ferramenta...",
     "generating_tool_params": "Gerando parâmetros e instruções da ferramenta...",
     "memory_recorded_ack": "Informações registradas na memória com sucesso.",

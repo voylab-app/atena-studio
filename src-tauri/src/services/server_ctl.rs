@@ -64,29 +64,65 @@ impl LocalServerController {
         message: &str,
         details: Option<&str>,
     ) {
-        let entry = DeveloperLogEntry {
-            id: format!("dev-{}", DEV_LOG_COUNTER.fetch_add(1, Ordering::Relaxed)),
-            timestamp: Utc::now(),
-            level: level.to_uppercase(),
-            tag: tag.map(|s| s.to_string()),
-            message: message.to_string(),
-            details: details.map(|s| s.to_string()),
-        };
+        let entry_id = format!("dev-{}", DEV_LOG_COUNTER.fetch_add(1, Ordering::Relaxed));
+        Self::update_or_record_dev_log(&entry_id, level, tag, message, details);
+    }
+
+    /// Updates an existing developer log entry by id in-place (or appends it if not found),
+    /// emitting a real-time event to the frontend for dynamic terminal streams.
+    pub fn update_or_record_dev_log(
+        id: &str,
+        level: &str,
+        tag: Option<&str>,
+        message: &str,
+        details: Option<&str>,
+    ) {
+        let mut entry_to_emit: Option<DeveloperLogEntry> = None;
 
         if let Ok(mut logs) = SERVER_DEV_LOGS.lock() {
-            logs.push(entry.clone());
-            if logs.len() > 1000 {
-                let overflow = logs.len() - 1000;
-                logs.drain(0..overflow);
+            if let Some(existing) = logs.iter_mut().find(|e| e.id == id) {
+                existing.timestamp = Utc::now();
+                existing.level = level.to_uppercase();
+                existing.tag = tag.map(|s| s.to_string());
+                existing.message = message.to_string();
+                if let Some(d) = details {
+                    existing.details = Some(d.to_string());
+                }
+                entry_to_emit = Some(existing.clone());
+            } else {
+                let entry = DeveloperLogEntry {
+                    id: id.to_string(),
+                    timestamp: Utc::now(),
+                    level: level.to_uppercase(),
+                    tag: tag.map(|s| s.to_string()),
+                    message: message.to_string(),
+                    details: details.map(|s| s.to_string()),
+                };
+                logs.push(entry.clone());
+                if logs.len() > 1000 {
+                    let overflow = logs.len() - 1000;
+                    logs.drain(0..overflow);
+                }
+                entry_to_emit = Some(entry);
             }
         }
 
-        if let Ok(h) = APP_HANDLE.lock() {
+        if let (Some(entry), Ok(h)) = (entry_to_emit, APP_HANDLE.lock()) {
             if let Some(ref app) = *h {
                 let _ = app.emit("developer_log_entry", entry);
             }
         }
     }
+
+    /// Emits real-time prompt processing progress percentage to the frontend chat UI.
+    pub fn emit_prompt_progress(percent: f32) {
+        if let Ok(h) = APP_HANDLE.lock() {
+            if let Some(ref app) = *h {
+                let _ = app.emit("inference_prompt_progress", serde_json::json!({ "percent": percent }));
+            }
+        }
+    }
+
 
     /// Records an HTTP request into the in-memory circular buffer (newest first, max 200 items).
     pub fn record_log(

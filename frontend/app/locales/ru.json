@@ -363,6 +363,7 @@
     "diff_copy_btn": "Копировать Diff",
     "local_model": "Локальная модель",
     "generating_response": "Генерация ответа...",
+    "processing_prompt": "Обработка промпта",
     "generating_tool_call": "Генерация инструмента...",
     "generating_tool_params": "Генерация параметров и инструкций инструмента...",
     "memory_recorded_ack": "Информация успешно сохранена в памяти.",

@@ -188,6 +188,15 @@
         <span>{{ $t('chat.empty_response_after_thinking') }}</span>
       </div>
 
+      <!-- Active Prompt Processing Indicator (before first token is produced) -->
+      <div
+        v-if="!isUser && message.is_streaming && !cleanContentText && !message.thinking && (!message.tool_calls || message.tool_calls.length === 0)"
+        class="flex items-center gap-2 py-1 select-none text-xs text-amber-400 font-mono"
+      >
+        <Loader2 class="w-3.5 h-3.5 animate-spin text-amber-400" />
+        <span>{{ $t('chat.processing_prompt') }}<span v-if="typeof message.prompt_progress_pct === 'number'"> ({{ message.prompt_progress_pct.toFixed(1) }}%)</span>...</span>
+      </div>
+
       <!-- Active Streaming Indicator (only when text is already rendered and still actively generating) -->
       <div
         v-if="!isUser && message.is_streaming && cleanContentText && (!message.tool_calls || message.tool_calls.length === 0)"
@@ -195,6 +204,9 @@
       >
         <span class="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
         <span>{{ $t('chat.generating_response') }}</span>
+        <span v-if="message.tokens_count" class="text-slate-400">
+          ({{ message.tokens_count }} tok<span v-if="message.generation_speed_tps"> • {{ Number(message.generation_speed_tps).toFixed(1) }} tok/s</span>)
+        </span>
       </div>
 
       <!-- MCP Tool Call Interactive Cards (Grouped & Collapsible) -->
@@ -2006,9 +2018,6 @@ const renderedContent = computed(() => {
     }
     if (isActivelyThinking.value) {
       return ''
-    }
-    if (props.message.is_streaming) {
-      return `<span class="inline-flex items-center gap-1.5 select-none"><span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span><span class="text-xs text-indigo-400 font-mono">${t('chat.generating_response')}</span></span>`
     }
     return ''
   }

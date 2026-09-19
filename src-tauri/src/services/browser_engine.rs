@@ -32,8 +32,15 @@ impl HeadlessWindowGuard {
 impl Drop for HeadlessWindowGuard {
     fn drop(&mut self) {
         if let Some(w) = self.window.take() {
-            log::debug!("🧹 RAII: Closing and destroying headless scraper window '{}'", w.label());
-            let _ = w.destroy();
+            let label = w.label().to_string();
+            log::debug!("🧹 RAII: Closing and destroying headless scraper window '{}'", label);
+            if let Some(app) = BrowserEngine::get_handle() {
+                let _ = app.run_on_main_thread(move || {
+                    let _ = w.destroy();
+                });
+            } else {
+                let _ = w.destroy();
+            }
         }
     }
 }

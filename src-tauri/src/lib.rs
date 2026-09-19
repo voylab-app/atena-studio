@@ -1193,6 +1193,11 @@ async fn stream_chat(
 }
 
 #[command]
+fn stop_chat_generation() {
+    crate::services::backend::BackendManager::abort_active_inference();
+}
+
+#[command]
 async fn start_mlx_server(
     model_path: String,
     host: String,
@@ -3883,6 +3888,7 @@ pub fn run() {
             set_active_model,
             get_active_model,
             stream_chat,
+            stop_chat_generation,
             start_mlx_server,
             start_llama_server,
             start_ollama_server,

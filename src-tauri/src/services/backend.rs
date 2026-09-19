@@ -1,6 +1,12 @@
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+static REQ_STREAM_LOG_COUNTER: AtomicU64 = AtomicU64::new(100);
+static ACTIVE_PROMPT_TICKER: std::sync::Mutex<Option<(Arc<AtomicBool>, tokio::task::AbortHandle)>> =
+    std::sync::Mutex::new(None);
+static ACTIVE_INFERENCE_ABORT: std::sync::Mutex<Option<Arc<AtomicBool>>> =
+    std::sync::Mutex::new(None);
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -2776,6 +2782,86 @@ impl BackendManager {
         serde_json::to_string_pretty(&cloned).unwrap_or_else(|_| payload.to_string())
     }
 
+    /// Stops and aborts any currently active prompt processing ticker.
+    pub fn stop_active_prompt_ticker() {
+        if let Ok(mut guard) = ACTIVE_PROMPT_TICKER.lock() {
+            if let Some((is_done, abort_handle)) = guard.take() {
+                is_done.store(true, Ordering::Relaxed);
+                abort_handle.abort();
+            }
+        }
+    }
+
+    /// Aborts any currently active inference generation immediately.
+    pub fn abort_active_inference() {
+        if let Ok(mut guard) = ACTIVE_INFERENCE_ABORT.lock() {
+            if let Some(flag) = guard.take() {
+                flag.store(true, Ordering::Relaxed);
+            }
+        }
+        Self::stop_active_prompt_ticker();
+    }
+
+    /// Launches a smooth background progress ticker for prompt processing (prefill) that logs in real time.
+    fn start_prompt_progress_ticker(
+        log_id: String,
+        model_name: String,
+        est_prompt_tokens: usize,
+    ) -> (Arc<AtomicBool>, tokio::task::JoinHandle<()>) {
+        Self::stop_active_prompt_ticker();
+
+        let is_done = Arc::new(AtomicBool::new(false));
+        let done_clone = is_done.clone();
+        let est_tokens = est_prompt_tokens.max(1);
+
+        let handle = tokio::spawn(async move {
+            let start = std::time::Instant::now();
+            // Estimate prefill duration: ~180 tokens/sec baseline for local models
+            let est_duration_secs = (est_tokens as f32 / 180.0).clamp(0.4, 60.0);
+
+            // Initial zero progress
+            crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                &log_id,
+                "INFO",
+                Some(&model_name),
+                "Prompt processing progress: 0.0%",
+                None,
+            );
+            crate::services::server_ctl::LocalServerController::emit_prompt_progress(0.0);
+
+            while !done_clone.load(Ordering::Relaxed) {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                if done_clone.load(Ordering::Relaxed) {
+                    break;
+                }
+                let elapsed_secs = start.elapsed().as_secs_f32();
+                let ratio = elapsed_secs / est_duration_secs;
+                let pct = if ratio < 1.0 {
+                    (ratio * 88.0).clamp(1.0, 88.0)
+                } else {
+                    let extra = ratio - 1.0;
+                    88.0 + (10.5 * (1.0 - (-extra * 0.9).exp()))
+                };
+                let pct = pct.min(98.5);
+
+                crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                    &log_id,
+                    "INFO",
+                    Some(&model_name),
+                    &format!("Prompt processing progress: {:.1}%", pct),
+                    None,
+                );
+                crate::services::server_ctl::LocalServerController::emit_prompt_progress(pct);
+            }
+        });
+
+        if let Ok(mut guard) = ACTIVE_PROMPT_TICKER.lock() {
+            *guard = Some((is_done.clone(), handle.abort_handle()));
+        }
+
+        (is_done, handle)
+    }
+
     /// Executes inference with streaming tokens, metrics, real-time thinking and tool_calls extraction.
     pub async fn execute_stream_callback<F>(
         model: &ModelInfo,
@@ -2791,6 +2877,12 @@ impl BackendManager {
     where
         F: FnMut(String, Option<String>, Option<Vec<crate::core::mcp::McpToolCall>>, bool, u64, Option<crate::core::model::GenerationMetrics>),
     {
+        Self::abort_active_inference();
+        let abort_flag = Arc::new(AtomicBool::new(false));
+        let abort_clone = abort_flag.clone();
+        if let Ok(mut guard) = ACTIVE_INFERENCE_ABORT.lock() {
+            *guard = Some(abort_flag);
+        }
         let start = std::time::Instant::now();
         let mut first_token_time: Option<std::time::Instant> = None;
         let enable_thinking = params.enable_thinking.unwrap_or(true);
@@ -2852,7 +2944,12 @@ impl BackendManager {
         match model.backend {
             BackendType::MlxLm => {
                 let endpoint = format!("http://{}:{}/v1/chat/completions", mlx_host, mlx_port);
-                if let Ok(client) = reqwest::Client::builder().http1_only().timeout(Duration::from_secs(120)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .http1_only()
+                    .connect_timeout(Duration::from_secs(15))
+                    .timeout(Duration::from_secs(1800))
+                    .build()
+                {
                     let mut payload = json!({
                         "model": model.local_path.clone().unwrap_or_else(|| model.id.clone()),
                         "messages": json_messages,
@@ -2865,14 +2962,7 @@ impl BackendManager {
                     });
 
                     if let Some(enable_think) = params.enable_thinking {
-                        payload["enable_thinking"] = json!(enable_think);
                         payload["chat_template_args"] = json!({ "enable_thinking": enable_think });
-                        payload["chat_template_kwargs"] = json!({ "enable_thinking": enable_think });
-                        payload["extra_body"] = json!({
-                            "enable_thinking": enable_think,
-                            "chat_template_args": { "enable_thinking": enable_think },
-                            "chat_template_kwargs": { "enable_thinking": enable_think }
-                        });
                     }
 
                     if let Some(tools) = &params.mcp_tools {
@@ -2916,8 +3006,50 @@ impl BackendManager {
                         None,
                     );
 
+                    let req_num = REQ_STREAM_LOG_COUNTER.fetch_add(1, Ordering::Relaxed);
+                    let prompt_log_id = format!("dev-prompt-{}", req_num);
+                    let token_log_id = format!("dev-token-{}", req_num);
+                    let (is_prompt_done, prompt_ticker) = Self::start_prompt_progress_ticker(
+                        prompt_log_id.clone(),
+                        model_name.clone(),
+                        est_prompt_tokens,
+                    );
+                    let mut last_token_gen_log = std::time::Instant::now();
+
                     let t_req = std::time::Instant::now();
-                    match client.post(&endpoint).json(&payload).send().await {
+                    let mut post_res = client.post(&endpoint).json(&payload).send().await;
+                    if let Ok(ref r) = post_res {
+                        if r.status().as_u16() == 422 || r.status().as_u16() == 400 {
+                            log::warn!("⚠️ [MLX] Server rejected payload with HTTP {}, retrying with standard streaming payload...", r.status());
+                            let mut fallback_payload = json!({
+                                "model": model.local_path.clone().unwrap_or_else(|| model.id.clone()),
+                                "messages": json_messages,
+                                "temperature": params.temperature,
+                                "top_p": params.top_p,
+                                "max_tokens": params.max_tokens,
+                                "stream": true
+                            });
+                            if let Some(tools) = &params.mcp_tools {
+                                let tools_payload: Vec<serde_json::Value> = tools.iter().filter(|t| t.enabled).map(|t| {
+                                    json!({
+                                        "type": "function",
+                                        "function": {
+                                            "name": t.tool.name,
+                                            "description": t.tool.description.clone().unwrap_or_default(),
+                                            "parameters": t.tool.input_schema
+                                        }
+                                    })
+                                }).collect();
+                                if !tools_payload.is_empty() {
+                                    fallback_payload["tools"] = json!(tools_payload);
+                                    fallback_payload["tool_choice"] = json!("auto");
+                                }
+                            }
+                            post_res = client.post(&endpoint).json(&fallback_payload).send().await;
+                        }
+                    }
+
+                    match post_res {
                         Ok(resp) => {
                             let status = resp.status();
                             let latency = t_req.elapsed().as_millis() as u64;
@@ -2933,6 +3065,9 @@ impl BackendManager {
                             );
 
                             if !status.is_success() {
+                                is_prompt_done.store(true, Ordering::Relaxed);
+                                prompt_ticker.abort();
+                                Self::stop_active_prompt_ticker();
                                 let err_body = resp.text().await.unwrap_or_default();
                                 println!("❌ [MLX STREAM ERRO HTTP {}]: {}", status, err_body);
                             } else {
@@ -2943,6 +3078,10 @@ impl BackendManager {
 
                                 let mut is_stream_done = false;
                                 while let Some(chunk_result) = stream.next().await {
+                                    if abort_clone.load(Ordering::Relaxed) {
+                                        log::info!("🛑 [MLX] Inference streaming aborted by user.");
+                                        break;
+                                    }
                                     if is_stream_done {
                                         break;
                                     }
@@ -2996,10 +3135,19 @@ impl BackendManager {
                                                                 .and_then(|s| s.as_str());
                                                             let content = delta.get("content").and_then(|s| s.as_str());
 
-                                                            if first_token_time.is_none() && (content.map(|c| !c.is_empty()).unwrap_or(false) || reasoning.map(|r| !r.is_empty()).unwrap_or(false)) {
+                                                            let has_first_token = content.map(|c| !c.is_empty()).unwrap_or(false)
+                                                                || reasoning.map(|r| !r.is_empty()).unwrap_or(false)
+                                                                || delta.get("tool_calls").and_then(|t| t.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+
+                                                            if first_token_time.is_none() && has_first_token {
                                                                 first_token_time = Some(std::time::Instant::now());
+                                                                is_prompt_done.store(true, Ordering::Relaxed);
+                                                                prompt_ticker.abort();
+                                                                Self::stop_active_prompt_ticker();
+                                                                crate::services::server_ctl::LocalServerController::emit_prompt_progress(100.0);
                                                                 println!("⚡ [MLX SSE FIRST TOKEN] Recebido em {:?}", start.elapsed());
-                                                                crate::services::server_ctl::LocalServerController::record_dev_log(
+                                                                crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                                                    &prompt_log_id,
                                                                     "INFO",
                                                                     Some(&model_name),
                                                                     "Prompt processing progress: 100.0%",
@@ -3034,6 +3182,25 @@ impl BackendManager {
                                                                 reported_finish_reason.clone(),
                                                             );
 
+                                                            if let Some(ft) = first_token_time {
+                                                                let current_toks = reported_comp.unwrap_or_else(|| {
+                                                                    let total_chars = c_acc.len() + t_acc.as_deref().map(|t| t.len()).unwrap_or(0);
+                                                                    (total_chars as f32 / 3.7).ceil() as usize
+                                                                });
+                                                                if current_toks > 0 && last_token_gen_log.elapsed() >= Duration::from_millis(250) {
+                                                                    last_token_gen_log = std::time::Instant::now();
+                                                                    let elapsed_sec = ft.elapsed().as_secs_f32().max(0.01);
+                                                                    let live_tps = reported_gen_tps.unwrap_or_else(|| (current_toks as f32 / elapsed_sec).max(0.1));
+                                                                    crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                                                        &token_log_id,
+                                                                        "INFO",
+                                                                        Some(&model_name),
+                                                                        &format!("Generating response: {} tokens ({:.1} tok/s)...", current_toks, live_tps),
+                                                                        None,
+                                                                    );
+                                                                }
+                                                            }
+
                                                             on_chunk(clean_content, t_acc, tool_calls, false, start.elapsed().as_millis() as u64, Some(metrics));
                                                         }
                                                     }
@@ -3046,6 +3213,16 @@ impl BackendManager {
                                     }
                                 }
 
+                                is_prompt_done.store(true, Ordering::Relaxed);
+                                prompt_ticker.abort();
+                                Self::stop_active_prompt_ticker();
+
+                                if abort_clone.load(Ordering::Relaxed) {
+                                    return Ok(());
+                                }
+
+                                crate::services::server_ctl::LocalServerController::emit_prompt_progress(100.0);
+
                                 let (final_content, final_thinking) = state.finalize(enable_thinking);
                                 let dt_ref = if accumulated_delta_tools.is_empty() { None } else { Some(&accumulated_delta_tools) };
                                 let (clean_final, final_tool_calls) = Self::extract_tool_calls(&final_content, dt_ref, params.mcp_tools.as_deref());
@@ -3056,13 +3233,22 @@ impl BackendManager {
                                     (clean_final.len() as f32 / 3.7).ceil() as usize
                                 });
                                 let prompt_toks = reported_prompt.unwrap_or(est_prompt_tokens);
-                                let tps_info = if let Some(tps) = reported_gen_tps {
-                                    format!(" ({:.1} tok/s)", tps)
+                                let final_tps_val = reported_gen_tps.unwrap_or_else(|| {
+                                    if let Some(ft) = first_token_time {
+                                        let elapsed_sec = ft.elapsed().as_secs_f32();
+                                        if elapsed_sec > 0.05 { (comp_tokens as f32 / elapsed_sec).max(0.1) } else { 0.0 }
+                                    } else {
+                                        0.0
+                                    }
+                                });
+                                let tps_info = if final_tps_val > 0.0 {
+                                    format!(" ({:.1} tok/s)", final_tps_val)
                                 } else {
                                     String::new()
                                 };
 
-                                crate::services::server_ctl::LocalServerController::record_dev_log(
+                                crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                    &token_log_id,
                                     "INFO",
                                     Some(&model_name),
                                     &format!("Finished streaming response: {} tokens generated{} in {}ms", comp_tokens, tps_info, total_latency),
@@ -3141,7 +3327,12 @@ impl BackendManager {
                 // If model is a local GGUF file running via llama-server on mlx_port (or if llama-server is active)
                 if model.format == crate::core::model::ModelFormat::Gguf || model.local_path.is_some() {
                     let endpoint = format!("http://{}:{}/v1/chat/completions", mlx_host, mlx_port);
-                    if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(120)).build() {
+                    if let Ok(client) = reqwest::Client::builder()
+                        .http1_only()
+                        .connect_timeout(Duration::from_secs(15))
+                        .timeout(Duration::from_secs(1800))
+                        .build()
+                    {
                         let mut payload = json!({
                             "model": model.local_path.clone().unwrap_or_else(|| model.id.clone()),
                             "messages": json_messages,
@@ -3197,6 +3388,16 @@ impl BackendManager {
                             None,
                         );
 
+                        let req_num = REQ_STREAM_LOG_COUNTER.fetch_add(1, Ordering::Relaxed);
+                        let prompt_log_id = format!("dev-prompt-{}", req_num);
+                        let token_log_id = format!("dev-token-{}", req_num);
+                        let (is_prompt_done, prompt_ticker) = Self::start_prompt_progress_ticker(
+                            prompt_log_id.clone(),
+                            model_name.clone(),
+                            est_prompt_tokens,
+                        );
+                        let mut last_token_gen_log = std::time::Instant::now();
+
                         let t_req = std::time::Instant::now();
                         if let Ok(resp) = client.post(&endpoint).json(&payload).send().await {
                             let status = resp.status();
@@ -3218,6 +3419,10 @@ impl BackendManager {
                                 let mut accumulated_delta_tools: Vec<serde_json::Value> = Vec::new();
 
                                 while let Some(chunk_result) = stream.next().await {
+                                    if abort_clone.load(Ordering::Relaxed) {
+                                        log::info!("🛑 [llama-server] Inference streaming aborted by user.");
+                                        break;
+                                    }
                                     if let Ok(chunk_bytes) = chunk_result {
                                         let text = String::from_utf8_lossy(&chunk_bytes);
                                         buffer.push_str(&text);
@@ -3283,9 +3488,18 @@ impl BackendManager {
                                                             .and_then(|s| s.as_str());
                                                         let content = delta.get("content").and_then(|s| s.as_str());
 
-                                                        if first_token_time.is_none() && (content.map(|c| !c.is_empty()).unwrap_or(false) || reasoning.map(|r| !r.is_empty()).unwrap_or(false)) {
+                                                        let has_first_token = content.map(|c| !c.is_empty()).unwrap_or(false)
+                                                            || reasoning.map(|r| !r.is_empty()).unwrap_or(false)
+                                                            || delta.get("tool_calls").and_then(|t| t.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+
+                                                        if first_token_time.is_none() && has_first_token {
                                                             first_token_time = Some(std::time::Instant::now());
-                                                            crate::services::server_ctl::LocalServerController::record_dev_log(
+                                                            is_prompt_done.store(true, Ordering::Relaxed);
+                                                            prompt_ticker.abort();
+                                                            Self::stop_active_prompt_ticker();
+                                                            crate::services::server_ctl::LocalServerController::emit_prompt_progress(100.0);
+                                                            crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                                                &prompt_log_id,
                                                                 "INFO",
                                                                 Some(&model_name),
                                                                 "Prompt processing progress: 100.0%",
@@ -3320,6 +3534,25 @@ impl BackendManager {
                                                             reported_finish_reason.clone(),
                                                         );
 
+                                                        if let Some(ft) = first_token_time {
+                                                            let current_toks = reported_comp.unwrap_or_else(|| {
+                                                                let total_chars = c_acc.len() + t_acc.as_deref().map(|t| t.len()).unwrap_or(0);
+                                                                (total_chars as f32 / 3.7).ceil() as usize
+                                                            });
+                                                            if current_toks > 0 && last_token_gen_log.elapsed() >= Duration::from_millis(250) {
+                                                                last_token_gen_log = std::time::Instant::now();
+                                                                let elapsed_sec = ft.elapsed().as_secs_f32().max(0.01);
+                                                                let live_tps = reported_gen_tps.unwrap_or_else(|| (current_toks as f32 / elapsed_sec).max(0.1));
+                                                                crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                                                    &token_log_id,
+                                                                    "INFO",
+                                                                    Some(&model_name),
+                                                                    &format!("Generating response: {} tokens ({:.1} tok/s)...", current_toks, live_tps),
+                                                                    None,
+                                                                );
+                                                            }
+                                                        }
+
                                                         on_chunk(clean_content, t_acc, tool_calls, false, start.elapsed().as_millis() as u64, Some(metrics));
                                                     }
                                                 }
@@ -3327,6 +3560,16 @@ impl BackendManager {
                                         }
                                     }
                                 }
+
+                                is_prompt_done.store(true, Ordering::Relaxed);
+                                prompt_ticker.abort();
+                                Self::stop_active_prompt_ticker();
+
+                                if abort_clone.load(Ordering::Relaxed) {
+                                    return Ok(());
+                                }
+
+                                crate::services::server_ctl::LocalServerController::emit_prompt_progress(100.0);
 
                                 let (final_content, final_thinking) = state.finalize(enable_thinking);
                                 let dt_ref = if accumulated_delta_tools.is_empty() { None } else { Some(&accumulated_delta_tools) };
@@ -3337,13 +3580,22 @@ impl BackendManager {
                                     (clean_final.len() as f32 / 3.7).ceil() as usize
                                 });
                                 let prompt_toks = reported_prompt.unwrap_or(est_prompt_tokens);
-                                let tps_info = if let Some(tps) = reported_gen_tps {
-                                    format!(" ({:.1} tok/s)", tps)
+                                let final_tps_val = reported_gen_tps.unwrap_or_else(|| {
+                                    if let Some(ft) = first_token_time {
+                                        let elapsed_sec = ft.elapsed().as_secs_f32();
+                                        if elapsed_sec > 0.05 { (comp_tokens as f32 / elapsed_sec).max(0.1) } else { 0.0 }
+                                    } else {
+                                        0.0
+                                    }
+                                });
+                                let tps_info = if final_tps_val > 0.0 {
+                                    format!(" ({:.1} tok/s)", final_tps_val)
                                 } else {
                                     String::new()
                                 };
 
-                                crate::services::server_ctl::LocalServerController::record_dev_log(
+                                crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                    &token_log_id,
                                     "INFO",
                                     Some(&model_name),
                                     &format!("Finished streaming response: {} tokens generated{} in {}ms", comp_tokens, tps_info, total_latency),
@@ -3397,7 +3649,11 @@ impl BackendManager {
                     0
                 };
 
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(120)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .connect_timeout(Duration::from_secs(15))
+                    .timeout(Duration::from_secs(1800))
+                    .build()
+                {
                     let mut payload = json!({
                         "model": model_name,
                         "messages": ollama_messages,
@@ -3434,6 +3690,16 @@ impl BackendManager {
                         }
                     }
 
+                    let req_num = REQ_STREAM_LOG_COUNTER.fetch_add(1, Ordering::Relaxed);
+                    let prompt_log_id = format!("dev-prompt-{}", req_num);
+                    let token_log_id = format!("dev-token-{}", req_num);
+                    let (is_prompt_done, prompt_ticker) = Self::start_prompt_progress_ticker(
+                        prompt_log_id.clone(),
+                        model_name.clone(),
+                        est_prompt_tokens,
+                    );
+                    let mut last_token_gen_log = std::time::Instant::now();
+
                     let t_req = std::time::Instant::now();
                     if let Ok(resp) = client.post(&endpoint).json(&payload).send().await {
                         let status = resp.status();
@@ -3453,6 +3719,10 @@ impl BackendManager {
                             let mut accumulated_delta_tools: Vec<serde_json::Value> = Vec::new();
 
                             while let Some(chunk_result) = stream.next().await {
+                                if abort_clone.load(Ordering::Relaxed) {
+                                    log::info!("🛑 [Ollama] Inference streaming aborted by user.");
+                                    break;
+                                }
                                 if let Ok(chunk_bytes) = chunk_result {
                                     let text = String::from_utf8_lossy(&chunk_bytes);
                                     buffer.push_str(&text);
@@ -3496,8 +3766,23 @@ impl BackendManager {
                                                     .and_then(|m| m.get("content"))
                                                     .and_then(|s| s.as_str());
 
-                                                if first_token_time.is_none() && (content.map(|c| !c.is_empty()).unwrap_or(false) || reasoning.map(|r| !r.is_empty()).unwrap_or(false)) {
+                                                let has_first_token = content.map(|c| !c.is_empty()).unwrap_or(false)
+                                                    || reasoning.map(|r| !r.is_empty()).unwrap_or(false)
+                                                    || json_val.get("message").and_then(|m| m.get("tool_calls")).and_then(|t| t.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+
+                                                if first_token_time.is_none() && has_first_token {
                                                     first_token_time = Some(std::time::Instant::now());
+                                                    is_prompt_done.store(true, Ordering::Relaxed);
+                                                    prompt_ticker.abort();
+                                                    Self::stop_active_prompt_ticker();
+                                                    crate::services::server_ctl::LocalServerController::emit_prompt_progress(100.0);
+                                                    crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                                        &prompt_log_id,
+                                                        "INFO",
+                                                        Some(&model_name),
+                                                        "Prompt processing progress: 100.0%",
+                                                        None,
+                                                    );
                                                 }
 
                                                 if let Some(tc_arr) = json_val.get("message").and_then(|m| m.get("tool_calls")).and_then(|t| t.as_array()) {
@@ -3528,8 +3813,31 @@ impl BackendManager {
                                                     reported_finish_reason.clone(),
                                                 );
 
+                                                if let Some(ft) = first_token_time {
+                                                    let current_toks = reported_comp.unwrap_or_else(|| {
+                                                        let total_chars = c_acc.len() + t_acc.as_deref().map(|t| t.len()).unwrap_or(0);
+                                                        (total_chars as f32 / 3.7).ceil() as usize
+                                                    });
+                                                    if current_toks > 0 && last_token_gen_log.elapsed() >= Duration::from_millis(250) {
+                                                        last_token_gen_log = std::time::Instant::now();
+                                                        let elapsed_sec = ft.elapsed().as_secs_f32().max(0.01);
+                                                        let live_tps = reported_gen_tps.unwrap_or_else(|| (current_toks as f32 / elapsed_sec).max(0.1));
+                                                        crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                                            &token_log_id,
+                                                            "INFO",
+                                                            Some(&model_name),
+                                                            &format!("Generating response: {} tokens ({:.1} tok/s)...", current_toks, live_tps),
+                                                            None,
+                                                        );
+                                                    }
+                                                }
+
                                                 on_chunk(clean_content, t_acc, tool_calls, is_done, start.elapsed().as_millis() as u64, Some(metrics));
                                                 if is_done {
+                                                    is_prompt_done.store(true, Ordering::Relaxed);
+                                                    prompt_ticker.abort();
+                                                    Self::stop_active_prompt_ticker();
+                                                    crate::services::server_ctl::LocalServerController::emit_prompt_progress(100.0);
                                                     return Ok(());
                                                 }
                                             }
@@ -3537,32 +3845,67 @@ impl BackendManager {
                                     }
                                 }
                             }
+                            is_prompt_done.store(true, Ordering::Relaxed);
+                            prompt_ticker.abort();
+                            Self::stop_active_prompt_ticker();
 
-                            let (final_content, final_thinking) = state.finalize(enable_thinking);
-                            let dt_ref = if accumulated_delta_tools.is_empty() { None } else { Some(&accumulated_delta_tools) };
-                            let (clean_final, final_tool_calls) = Self::extract_tool_calls(&final_content, dt_ref, params.mcp_tools.as_deref());
-                            
-                            let final_metrics = Self::compute_generation_metrics(
-                                params,
-                                est_prompt_tokens,
-                                est_cached_tokens,
-                                reported_prompt,
-                                reported_cached,
-                                reported_comp,
-                                &clean_final,
-                                final_thinking.as_deref(),
-                                start,
-                                first_token_time,
-                                reported_prefill_tps,
-                                reported_gen_tps,
-                                reported_finish_reason.clone(),
-                            );
+                            if abort_clone.load(Ordering::Relaxed) {
+                                return Ok(());
+                            }
 
-                            on_chunk(clean_final, final_thinking, final_tool_calls, true, start.elapsed().as_millis() as u64, Some(final_metrics));
-                            return Ok(());
+                                let (final_content, final_thinking) = state.finalize(enable_thinking);
+                                let dt_ref = if accumulated_delta_tools.is_empty() { None } else { Some(&accumulated_delta_tools) };
+                                let (clean_final, final_tool_calls) = Self::extract_tool_calls(&final_content, dt_ref, params.mcp_tools.as_deref());
+                                
+                                let total_latency = start.elapsed().as_millis() as u64;
+                                let comp_tokens = reported_comp.unwrap_or_else(|| {
+                                    (clean_final.len() as f32 / 3.7).ceil() as usize
+                                });
+                                let final_tps_val = reported_gen_tps.unwrap_or_else(|| {
+                                    if let Some(ft) = first_token_time {
+                                        let elapsed_sec = ft.elapsed().as_secs_f32();
+                                        if elapsed_sec > 0.05 { (comp_tokens as f32 / elapsed_sec).max(0.1) } else { 0.0 }
+                                    } else {
+                                        0.0
+                                    }
+                                });
+                                let tps_info = if final_tps_val > 0.0 {
+                                    format!(" ({:.1} tok/s)", final_tps_val)
+                                } else {
+                                    String::new()
+                                };
+                                crate::services::server_ctl::LocalServerController::update_or_record_dev_log(
+                                    &token_log_id,
+                                    "INFO",
+                                    Some(&model_name),
+                                    &format!("Finished streaming response: {} tokens generated{} in {}ms", comp_tokens, tps_info, total_latency),
+                                    None,
+                                );
+
+                                let final_metrics = Self::compute_generation_metrics(
+                                    params,
+                                    est_prompt_tokens,
+                                    est_cached_tokens,
+                                    reported_prompt,
+                                    reported_cached,
+                                    reported_comp,
+                                    &clean_final,
+                                    final_thinking.as_deref(),
+                                    start,
+                                    first_token_time,
+                                    reported_prefill_tps,
+                                    reported_gen_tps,
+                                    reported_finish_reason.clone(),
+                                );
+
+                                on_chunk(clean_final, final_thinking, final_tool_calls, true, start.elapsed().as_millis() as u64, Some(final_metrics));
+                                return Ok(());
+                            } else {
+                                is_prompt_done.store(true, Ordering::Relaxed);
+                                prompt_ticker.abort();
+                            }
                         }
                     }
-                }
 
                 // Fallback to non-streaming execution if HTTP stream fails
                 if let Ok((content, thinking, tool_calls)) = Self::execute_stream(model, system_prompt, messages, params, mlx_host, mlx_port, ollama_host, ollama_port).await {
@@ -3799,7 +4142,11 @@ impl BackendManager {
                 }
 
                 let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(180)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .connect_timeout(Duration::from_secs(15))
+                    .timeout(Duration::from_secs(1800))
+                    .build()
+                {
                     let mut payload = json!({
                         "model": model_name,
                         "messages": json_messages,
