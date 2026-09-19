@@ -71,6 +71,9 @@ In addition to external MCP servers, Atena Studio embeds first-class native tool
 * **`atena_fetch_webpage`**: Webpage reader converting HTML to sanitized, clean Markdown text.
 * **`atena_scratchpad_write` / `atena_scratchpad_read` / `atena_scratchpad_clear`**: Working memory scratchpad for active tasks.
 * **`atena_search_memory` / `atena_search_episodes` / `atena_read_episode`**: Associative memory graph queries.
+* **`atena_schedule_task` / `atena_list_scheduled_tasks` / `atena_cancel_scheduled_task` / `atena_run_scheduled_task`**: Proactive background routines and automation scheduler.
+
+> **Operational Decoupling**: Core native tools (`atena_web_search`, `atena_fetch_webpage`, scratchpad, and scheduler) operate completely independently of the procedural skills (`enable_skills_memory`) and cognitive memory (`enable_cognitive_memory`) toggles. Disabling skills suppresses procedural recipes and terminal script executions (`run_command`, `run_skill_script`), but never disables web research or scratchpad capabilities.
 
 Refer to `doc/12_autonomous_agent_and_scheduler.md` for architectural details.
 

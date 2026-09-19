@@ -126,9 +126,21 @@ To add support for a new language (e.g., French — `fr`):
 4. **(Optional) Add backend prompt support (`src-tauri/src/lib.rs`)**:
    * In the `match locale` block of `translate_mcp_tool_labels`, add a `"fr"` case for French humanization.
 
+5. **(Optional) Add native System Tray labels (`src-tauri/src/tray.rs`)**:
+   * In `get_tray_labels(locale: &str)`, add a match arm with translated labels (`title`, `show`, `hide`, `quit`, `tooltip`).
+
 ---
 
-## 6. Neutrality and Privacy Guidelines
+## 6. Native System Tray Menu Localization
+
+The native desktop menu bar / system tray (`src-tauri/src/tray.rs`) dynamically synchronizes with the user's active locale:
+* **Bootstrap Localization**: On launch, `setup_tray` initializes with the language saved in `AppConfig::load().language`.
+* **Dynamic Runtime Updates**: When the user changes language in the frontend (`useLocale.ts` or Settings), the IPC command `update_tray_locale(locale)` rebuilds the tray menu and tooltip immediately without restarting the application.
+* **Supported Languages**: Built-in support across English (`en`), Portuguese (`pt-BR`), Spanish (`es`), Simplified Chinese (`zh-CN`), and Russian (`ru`).
+
+---
+
+## 7. Neutrality and Privacy Guidelines
 
 In strict accordance with [`AGENTS.md`](../AGENTS.md):
 * Localization files must never contain personal names, developer references, or fixed personal metadata.

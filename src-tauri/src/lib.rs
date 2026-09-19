@@ -626,6 +626,7 @@ async fn save_app_config(
     let mut current = crate::core::config::AppConfig::load();
     let saved_cfg = if let Ok(parsed) = serde_json::from_value::<crate::core::config::AppConfig>(config.clone()) {
         parsed.save()?;
+        let _ = crate::tray::update_tray_locale(&app, &parsed.language);
         parsed
     } else {
         if let Some(cp) = config.get("cloud_providers") {
@@ -659,6 +660,10 @@ async fn save_app_config(
         if let Some(tz) = config.get("timezone").and_then(|v| v.as_str()) {
             current.timezone = tz.to_string();
         }
+        if let Some(lang) = config.get("language").and_then(|v| v.as_str()) {
+            current.language = lang.to_string();
+            let _ = crate::tray::update_tray_locale(&app, lang);
+        }
         current.save()?;
         current
     };
@@ -667,6 +672,11 @@ async fn save_app_config(
     state.gateways_manager.sync_with_config(app, &saved_cfg).await;
     crate::services::scheduler::BackgroundScheduler::refresh_all_task_schedules(&state);
     Ok(())
+}
+
+#[command]
+fn update_tray_locale(app: AppHandle, locale: String) -> Result<(), String> {
+    crate::tray::update_tray_locale(&app, &locale).map_err(|e| e.to_string())
 }
 
 #[command]
@@ -825,20 +835,20 @@ pub async fn execute_stream_chat_internal(
     let is_memory_enabled = enable_memory.unwrap_or(false);
     let app_cfg = crate::core::config::AppConfig::load();
     let use_facts = is_memory_enabled && enable_facts_memory.unwrap_or(app_cfg.enable_facts_memory);
-    let use_skills = is_memory_enabled && enable_skills_memory.unwrap_or(app_cfg.enable_skills_memory);
+    let use_skills = enable_skills_memory.unwrap_or(app_cfg.enable_skills_memory);
     let use_episodic = is_memory_enabled && enable_episodic_memory.unwrap_or(app_cfg.enable_episodic_memory);
 
     if !is_memory_enabled {
-        log::info!("🧠 Memória Cognitiva desativada ou suprimida: inferência leve sem injeção de prompt neural, ferramentas nativas de memória ou I/O em disco.");
+        log::info!("🧠 Cognitive memory disabled or suppressed: lightweight inference without neural associative prompt, facts, or episodic tools.");
         if let Some(ref mut tools) = params.mcp_tools {
-            tools.retain(|t| t.server_id != "atena_native" && t.server_id != "atena" && t.server_id != "skills");
+            // Suppress only associative cognitive memory tools, preserving native utilities (web search, webpage reader, scratchpad, scheduler)
+            tools.retain(|t| {
+                t.tool.name != "atena_search_memory"
+                    && t.tool.name != "atena_search_episodes"
+                    && t.tool.name != "atena_read_episode"
+            });
         }
     } else {
-        if !use_skills {
-            if let Some(ref mut tools) = params.mcp_tools {
-                tools.retain(|t| t.server_id != "skills" && t.tool.name != "run_skill_script" && t.tool.name != "create_procedural_skill" && t.tool.name != "update_procedural_skill" && t.tool.name != "edit_procedural_skill");
-            }
-        }
         if !use_facts {
             if let Some(ref mut tools) = params.mcp_tools {
                 tools.retain(|t| t.tool.name != "atena_search_memory");
@@ -848,6 +858,21 @@ pub async fn execute_stream_chat_internal(
             if let Some(ref mut tools) = params.mcp_tools {
                 tools.retain(|t| t.tool.name != "atena_search_episodes" && t.tool.name != "atena_read_episode");
             }
+        }
+    }
+
+    if !use_skills {
+        if let Some(ref mut tools) = params.mcp_tools {
+            // Suppress strictly procedural skill tools without affecting general native utilities
+            tools.retain(|t| {
+                t.server_id != "skills"
+                    && t.tool.name != "run_command"
+                    && t.tool.name != "run_skill_command"
+                    && t.tool.name != "run_skill_script"
+                    && t.tool.name != "create_procedural_skill"
+                    && t.tool.name != "update_procedural_skill"
+                    && t.tool.name != "edit_procedural_skill"
+            });
         }
     }
     let raw_user_text = user_message.clone().unwrap_or_default();
@@ -3756,16 +3781,19 @@ async fn start_autonomous_agent_task(
     let active_model = state.active_model.lock().await.clone();
     let sys_prompt = "You are Atena, an economic and autonomous assistant. Solve the user's task using available tools step by step.".to_string();
 
-    let req = crate::StreamChatRequest {
-        model: active_model,
-        system_prompt: sys_prompt,
-        messages: Some(vec![]),
-        user_message: Some(prompt),
-        session_id,
-        session_title: Some("Autonomous Task".to_string()),
-        params: crate::core::model::InferenceParams::default(),
-        mlx_host: app_cfg.mlx_server_host,
-        mlx_port: app_cfg.mlx_server_port,
+        let mut params = crate::core::model::InferenceParams::default();
+        params.mcp_tools = Some(state.mcp_manager.list_all_tools().await);
+
+        let req = crate::StreamChatRequest {
+            model: active_model,
+            system_prompt: sys_prompt,
+            messages: Some(vec![]),
+            user_message: Some(prompt),
+            session_id,
+            session_title: Some("Autonomous Task".to_string()),
+            params,
+            mlx_host: app_cfg.mlx_server_host,
+            mlx_port: app_cfg.mlx_server_port,
         ollama_host: app_cfg.ollama_host,
         ollama_port: app_cfg.ollama_port,
         enable_memory: Some(app_cfg.enable_cognitive_memory),
@@ -3949,7 +3977,8 @@ pub fn run() {
             scheduler_toggle_task,
             scheduler_run_now,
             scheduler_get_task_runs,
-            start_autonomous_agent_task
+            start_autonomous_agent_task,
+            update_tray_locale
         ])
         .setup(|app| {
             let handle = app.handle().clone();

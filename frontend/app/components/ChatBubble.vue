@@ -1199,6 +1199,20 @@ const getServerDisplayName = (tc: any) => {
   if (tc.server_id === 'skills' || tc.server_name === 'Procedural Skills' || isProceduralSkillCall(tc)) {
     return t('memory.skill_command_server_name')
   }
+  if (tc.name === 'atena_web_search' || tc.name === 'atena_fetch_webpage') {
+    return t('memory.server_atena_web')
+  }
+  if (tc.name?.startsWith('atena_scratchpad_')) {
+    return t('memory.server_atena_scratchpad')
+  }
+  if (
+    tc.name?.startsWith('atena_schedule_') ||
+    tc.name === 'atena_list_scheduled_tasks' ||
+    tc.name === 'atena_cancel_scheduled_task' ||
+    tc.name === 'atena_run_scheduled_task'
+  ) {
+    return t('memory.server_atena_scheduler')
+  }
   if (tc.server_id === 'atena_native' || tc.server_id === 'atena' || tc.server_name?.includes('Atena Core')) {
     return t('memory.server_atena_native')
   }

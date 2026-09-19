@@ -42,6 +42,13 @@
     "realtime": "Tiempo Real",
     "none": "Ninguno"
   },
+  "tray": {
+    "title": "Atena Studio",
+    "show": "Mostrar Atena Studio",
+    "hide": "Ocultar en la bandeja",
+    "quit": "Salir de Atena Studio",
+    "tooltip": "Atena Studio - Plataforma Cognitiva de IA"
+  },
   "sidebar": {
     "new_chat": "Nueva Conversación",
     "chat": "Chat",
@@ -871,6 +878,9 @@
     "skill_param_steps": "Pasos de Ejecución",
     "skill_param_scripts": "Scripts Automatizados",
     "server_atena_native": "Atena Core (Memoria y Episodios)",
+    "server_atena_web": "Atena Core (Web y Búsqueda)",
+    "server_atena_scratchpad": "Atena Core (Bloc de Notas)",
+    "server_atena_scheduler": "Atena Core (Automatización y Programador)",
     "native_search_episodes_title": "Buscar Episodios",
     "native_search_episodes_desc": "Buscar en el historial de episodios cognitivos y conversaciones pasadas en Atena",
     "native_read_episode_title": "Leer Episodio",

@@ -1687,21 +1687,46 @@ const handleSendMessage = async (payload: any) => {
 
     const isPrivate = !!currentSession.value?.is_private
     const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
-    const activeTools = (isMemoryDisabled
-      ? mcpTools.value.filter((t) => t.server_id !== 'atena_native' && t.server_id !== 'atena' && t.server_id !== 'skills')
-      : mcpTools.value.filter((t) => {
-          if (config.value.enable_skills_memory === false) {
-            if (t.server_id === 'skills' || t.tool?.name === 'run_skill_script' || t.tool?.name === 'create_procedural_skill' || t.tool?.name === 'update_procedural_skill' || t.tool?.name === 'edit_procedural_skill') return false
-          }
-          if (config.value.enable_facts_memory === false) {
-            if (t.tool?.name === 'atena_search_memory') return false
-          }
-          if (config.value.enable_episodic_memory === false) {
-            if (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode') return false
-          }
-          return true
-        })
-    ).filter((t) => t.enabled !== false)
+    const activeTools = mcpTools.value.filter((t) => {
+      // 1. Cognitive Memory layers filtering (facts and episodic memory)
+      if (isMemoryDisabled) {
+        if (
+          t.tool?.name === 'atena_search_memory' ||
+          t.tool?.name === 'atena_search_episodes' ||
+          t.tool?.name === 'atena_read_episode'
+        ) {
+          return false
+        }
+      } else {
+        if (config.value.enable_facts_memory === false && t.tool?.name === 'atena_search_memory') {
+          return false
+        }
+        if (
+          config.value.enable_episodic_memory === false &&
+          (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
+        ) {
+          return false
+        }
+      }
+
+      // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
+      if (config.value.enable_skills_memory === false) {
+        if (
+          t.server_id === 'skills' ||
+          t.tool?.name === 'run_command' ||
+          t.tool?.name === 'run_skill_command' ||
+          t.tool?.name === 'run_skill_script' ||
+          t.tool?.name === 'create_procedural_skill' ||
+          t.tool?.name === 'update_procedural_skill' ||
+          t.tool?.name === 'edit_procedural_skill'
+        ) {
+          return false
+        }
+      }
+
+      // 3. Native utility tools (web search, webpage fetch, task scratchpad, scheduler) & external MCP tools remain enabled
+      return t.enabled !== false
+    })
 
     const inferenceParams = {
       ...params.value,
@@ -2212,21 +2237,46 @@ const triggerFollowUpWithToolResults = async (previousAssistantMsg: any) => {
 
     const isPrivate = !!currentSession.value?.is_private
     const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
-    const activeTools = (isMemoryDisabled
-      ? mcpTools.value.filter((t) => t.server_id !== 'atena_native' && t.server_id !== 'atena' && t.server_id !== 'skills')
-      : mcpTools.value.filter((t) => {
-          if (config.value.enable_skills_memory === false) {
-            if (t.server_id === 'skills' || t.tool?.name === 'run_skill_script' || t.tool?.name === 'create_procedural_skill' || t.tool?.name === 'update_procedural_skill' || t.tool?.name === 'edit_procedural_skill') return false
-          }
-          if (config.value.enable_facts_memory === false) {
-            if (t.tool?.name === 'atena_search_memory') return false
-          }
-          if (config.value.enable_episodic_memory === false) {
-            if (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode') return false
-          }
-          return true
-        })
-    ).filter((t) => t.enabled !== false)
+    const activeTools = mcpTools.value.filter((t) => {
+      // 1. Cognitive Memory layers filtering (facts and episodic memory)
+      if (isMemoryDisabled) {
+        if (
+          t.tool?.name === 'atena_search_memory' ||
+          t.tool?.name === 'atena_search_episodes' ||
+          t.tool?.name === 'atena_read_episode'
+        ) {
+          return false
+        }
+      } else {
+        if (config.value.enable_facts_memory === false && t.tool?.name === 'atena_search_memory') {
+          return false
+        }
+        if (
+          config.value.enable_episodic_memory === false &&
+          (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
+        ) {
+          return false
+        }
+      }
+
+      // 2. Procedural Skills filtering (strictly procedural automation recipes, not core utilities)
+      if (config.value.enable_skills_memory === false) {
+        if (
+          t.server_id === 'skills' ||
+          t.tool?.name === 'run_command' ||
+          t.tool?.name === 'run_skill_command' ||
+          t.tool?.name === 'run_skill_script' ||
+          t.tool?.name === 'create_procedural_skill' ||
+          t.tool?.name === 'update_procedural_skill' ||
+          t.tool?.name === 'edit_procedural_skill'
+        ) {
+          return false
+        }
+      }
+
+      // 3. Native utility tools (web search, webpage fetch, task scratchpad, scheduler) & external MCP tools remain enabled
+      return t.enabled !== false
+    })
 
     const inferenceParams = {
       ...params.value,

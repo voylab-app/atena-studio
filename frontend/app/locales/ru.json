@@ -42,6 +42,13 @@
     "realtime": "В реальном времени",
     "none": "Нет"
   },
+  "tray": {
+    "title": "Atena Studio",
+    "show": "Показать Atena Studio",
+    "hide": "Скрыть в трей",
+    "quit": "Выйти из Atena Studio",
+    "tooltip": "Atena Studio - Когнитивная платформа ИИ"
+  },
   "sidebar": {
     "new_chat": "Новый чат",
     "chat": "Чат",
@@ -871,6 +878,9 @@
     "skill_param_steps": "Шаги выполнения",
     "skill_param_scripts": "Автоматические скрипты",
     "server_atena_native": "Ядро Atena (Память и эпизоды)",
+    "server_atena_web": "Ядро Atena (Веб и поиск)",
+    "server_atena_scratchpad": "Ядро Atena (Блокнот задач)",
+    "server_atena_scheduler": "Ядро Atena (Автоматизация и планировщик)",
     "native_search_episodes_title": "Поиск эпизодов",
     "native_search_episodes_desc": "Поиск в истории когнитивных эпизодов и прошлых диалогов Atena",
     "native_read_episode_title": "Прочитать эпизод",

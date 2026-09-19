@@ -43,6 +43,14 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   nuxtApp.vueApp.use(i18n)
 
+  if (typeof window !== 'undefined') {
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => {
+        invoke('update_tray_locale', { locale: initialLocale }).catch(() => {})
+      })
+      .catch(() => {})
+  }
+
   return {
     provide: {
       i18n

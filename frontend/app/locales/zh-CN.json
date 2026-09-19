@@ -42,6 +42,13 @@
     "realtime": "实时",
     "none": "无"
   },
+  "tray": {
+    "title": "Atena Studio",
+    "show": "显示 Atena Studio",
+    "hide": "隐藏到系统托盘",
+    "quit": "退出 Atena Studio",
+    "tooltip": "Atena Studio - 人工智能认知平台"
+  },
   "sidebar": {
     "new_chat": "新对话",
     "chat": "对话",
@@ -871,6 +878,9 @@
     "skill_param_steps": "执行步骤",
     "skill_param_scripts": "自动化脚本",
     "server_atena_native": "Atena 核心（记忆与情景）",
+    "server_atena_web": "Atena 核心（网络与搜索）",
+    "server_atena_scratchpad": "Atena 核心（任务便签）",
+    "server_atena_scheduler": "Atena 核心（自动化与调度器）",
     "native_search_episodes_title": "搜索情景",
     "native_search_episodes_desc": "在 Atena 认知情景历史和过往对话中搜索",
     "native_read_episode_title": "阅读情景",

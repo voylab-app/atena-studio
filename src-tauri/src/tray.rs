@@ -9,18 +9,65 @@ use tauri::{
 
 pub const TRAY_ID: &str = "atena-main-tray";
 
-pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Build Menu Items
-    let title_item = MenuItem::with_id(app, "tray_title", "Atena Studio", false, None::<&str>)?;
+pub struct TrayLabels {
+    pub title: &'static str,
+    pub show: &'static str,
+    pub hide: &'static str,
+    pub quit: &'static str,
+    pub tooltip: &'static str,
+}
+
+pub fn get_tray_labels(locale: &str) -> TrayLabels {
+    match locale {
+        "pt-BR" | "pt" => TrayLabels {
+            title: "Atena Studio",
+            show: "Mostrar Atena Studio",
+            hide: "Ocultar na Bandeja",
+            quit: "Encerrar Atena Studio",
+            tooltip: "Atena Studio - Plataforma Cognitiva de IA",
+        },
+        "es" => TrayLabels {
+            title: "Atena Studio",
+            show: "Mostrar Atena Studio",
+            hide: "Ocultar en la bandeja",
+            quit: "Salir de Atena Studio",
+            tooltip: "Atena Studio - Plataforma Cognitiva de IA",
+        },
+        "zh-CN" | "zh" => TrayLabels {
+            title: "Atena Studio",
+            show: "显示 Atena Studio",
+            hide: "隐藏到系统托盘",
+            quit: "退出 Atena Studio",
+            tooltip: "Atena Studio - 人工智能认知平台",
+        },
+        "ru" => TrayLabels {
+            title: "Atena Studio",
+            show: "Показать Atena Studio",
+            hide: "Скрыть в трей",
+            quit: "Выйти из Atena Studio",
+            tooltip: "Atena Studio - Когнитивная платформа ИИ",
+        },
+        _ => TrayLabels {
+            title: "Atena Studio",
+            show: "Show Atena Studio",
+            hide: "Hide to Tray",
+            quit: "Quit Atena Studio",
+            tooltip: "Atena Studio - AI Cognitive Platform",
+        },
+    }
+}
+
+pub fn build_tray_menu(app: &AppHandle, locale: &str) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
+    let labels = get_tray_labels(locale);
+    let title_item = MenuItem::with_id(app, "tray_title", labels.title, false, None::<&str>)?;
     let status_sep = PredefinedMenuItem::separator(app)?;
     
-    let show_item = MenuItem::with_id(app, "tray_show", "Show Atena Studio", true, None::<&str>)?;
-    let hide_item = MenuItem::with_id(app, "tray_hide", "Hide to Tray", true, None::<&str>)?;
+    let show_item = MenuItem::with_id(app, "tray_show", labels.show, true, None::<&str>)?;
+    let hide_item = MenuItem::with_id(app, "tray_hide", labels.hide, true, None::<&str>)?;
     let action_sep = PredefinedMenuItem::separator(app)?;
 
-    let quit_item = MenuItem::with_id(app, "tray_quit", "Quit Atena Studio", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "tray_quit", labels.quit, true, None::<&str>)?;
 
-    // 2. Compose Menu
     let menu = Menu::with_items(
         app,
         &[
@@ -32,6 +79,28 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             &quit_item,
         ],
     )?;
+    Ok(menu)
+}
+
+pub fn update_tray_locale(app: &AppHandle, locale: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let labels = get_tray_labels(locale);
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let menu = build_tray_menu(app, locale)?;
+        let _ = tray.set_menu(Some(menu));
+        let _ = tray.set_tooltip(Some(labels.tooltip));
+        log::info!("🔄 System Tray updated with locale: {}", locale);
+    }
+    Ok(())
+}
+
+pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Resolve configured locale
+    let cfg = crate::core::config::AppConfig::load();
+    let locale = cfg.language.as_str();
+    let labels = get_tray_labels(locale);
+
+    // 2. Build Menu Items with active locale
+    let menu = build_tray_menu(app, locale)?;
 
     // 3. Resolve tray icon: macOS uses a monochrome template icon that automatically
     // adapts to light/dark themes (white in dark mode, black in light mode).
@@ -53,7 +122,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let _tray = TrayIconBuilder::<Wry>::with_id(TRAY_ID)
         .icon(tray_icon)
         .icon_as_template(true)
-        .tooltip("Atena Studio - AI Cognitive Platform")
+        .tooltip(labels.tooltip)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -97,6 +166,6 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
 
-    log::info!("🚀 Native System Tray initialized successfully.");
+    log::info!("🚀 Native System Tray initialized successfully with locale: {}", locale);
     Ok(())
 }
