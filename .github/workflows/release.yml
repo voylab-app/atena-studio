@@ -31,16 +31,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup Node.js and pnpm
+        uses: pnpm/setup@v1
         with:
           version: 12
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'pnpm'
+          runtime: node@22
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
