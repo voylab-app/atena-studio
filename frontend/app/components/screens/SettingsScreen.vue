@@ -114,7 +114,7 @@
                   <p class="text-[11px] text-slate-400 mt-0.5">Atena Studio para {{ supportsMlx ? 'macOS (Apple Silicon)' : (platformInfo?.os === 'windows' ? 'Windows' : 'Linux') }}</p>
                 </div>
                 <div class="text-xs font-mono font-bold text-slate-100 bg-[#161a29] px-3 py-1.5 rounded-lg border border-[#22283e]">
-                  Atena Studio 0.2.0 (Build 2026.08)
+                  Atena Studio v{{ appVersion }}
                 </div>
               </div>
 
@@ -127,7 +127,7 @@
                   <button
                     type="button"
                     @click="handleCheckUpdates"
-                    :disabled="isCheckingUpdates"
+                    :disabled="isCheckingUpdates || isDownloadingUpdate"
                     class="px-3 py-1.5 rounded-xl border border-[#22283e] bg-[#161a29] hover:bg-[#1c2134] text-xs font-medium text-slate-300 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-sm disabled:opacity-60"
                   >
                     <RefreshCw :class="['w-3.5 h-3.5', isCheckingUpdates ? 'animate-spin text-indigo-400' : 'text-slate-400']" />
@@ -138,6 +138,47 @@
                     <span>{{ $t('settings.stable') }}</span>
                   </div>
                 </div>
+              </div>
+
+              <!-- Available update banner/card -->
+              <div v-if="availableUpdate" class="p-3.5 rounded-xl bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-[#141828] border border-indigo-500/30 space-y-2.5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+                    <span class="text-xs font-bold text-indigo-200">
+                      {{ $t('settings.update_available', { version: availableUpdate.version }) }}
+                    </span>
+                    <span v-if="availableUpdate.date" class="text-[10px] text-slate-400">
+                      ({{ availableUpdate.date }})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    @click="handleInstallUpdate"
+                    :disabled="isDownloadingUpdate"
+                    class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-95 disabled:opacity-60"
+                  >
+                    <Loader2 v-if="isDownloadingUpdate" class="w-3.5 h-3.5 animate-spin" />
+                    <Download v-else class="w-3.5 h-3.5" />
+                    <span>{{ isUpdateReady ? $t('settings.update_ready_restart') : (isDownloadingUpdate ? $t('settings.update_downloading', { percent: downloadProgress }) : $t('settings.update_download_install')) }}</span>
+                  </button>
+                </div>
+
+                <!-- Progress bar -->
+                <div v-if="isDownloadingUpdate" class="w-full bg-[#161a28] rounded-full h-1.5 overflow-hidden border border-[#22293e]">
+                  <div class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full transition-all duration-300" :style="{ width: `${downloadProgress}%` }"></div>
+                </div>
+
+                <!-- Release notes snippet if any -->
+                <div v-if="availableUpdate.body" class="text-[11px] text-slate-300 bg-[#0d0f18]/80 p-2.5 rounded-lg border border-[#1d2235] font-mono max-h-28 overflow-y-auto whitespace-pre-wrap">
+                  {{ availableUpdate.body }}
+                </div>
+              </div>
+
+              <!-- Error message if any -->
+              <div v-if="updateError" class="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                <AlertTriangle class="w-3.5 h-3.5 flex-shrink-0" />
+                <span class="truncate">{{ $t('settings.update_error', { error: updateError }) }}</span>
               </div>
             </div>
           </div>
@@ -2689,6 +2730,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, inject, type Ref, type ComputedRef } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { check, type Update } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { saveTextFile } from '~/utils/exportMarkdown'
 import { addNotification } from '~/utils/notifications'
 import type { AppConfig, GenerationParams, HardwareInfo, McpServerConfig, McpToolDefinition, DetectedModelDirectory, ServerRequestLog, DeveloperLogEntry } from '~/types'
@@ -3094,20 +3137,87 @@ const getPluginIcon = (iconName?: string | null) => {
   }
 }
 
+const appVersion = ref('0.1.0')
 const isCheckingUpdates = ref(false)
 const updateCheckFeedback = ref('')
+const availableUpdate = ref<Update | null>(null)
+const isDownloadingUpdate = ref(false)
+const downloadProgress = ref(0)
+const isUpdateReady = ref(false)
+const updateError = ref<string | null>(null)
 
-const handleCheckUpdates = () => {
-  if (isCheckingUpdates.value) return
+const fetchAppVersion = async () => {
+  try {
+    const v = await invoke<string>('get_app_version')
+    if (v) {
+      appVersion.value = v
+    }
+  } catch {
+    // fallback gracefully
+  }
+}
+
+const handleCheckUpdates = async () => {
+  if (isCheckingUpdates.value || isDownloadingUpdate.value) return
   isCheckingUpdates.value = true
   updateCheckFeedback.value = ''
-  setTimeout(() => {
-    isCheckingUpdates.value = false
-    updateCheckFeedback.value = 'Versão mais recente'
-    setTimeout(() => {
+  updateError.value = null
+
+  try {
+    const update = await check()
+    if (update) {
+      availableUpdate.value = update
       updateCheckFeedback.value = ''
-    }, 4000)
-  }, 1000)
+    } else {
+      availableUpdate.value = null
+      updateCheckFeedback.value = t('settings.update_latest')
+      setTimeout(() => {
+        if (!availableUpdate.value) {
+          updateCheckFeedback.value = ''
+        }
+      }, 4000)
+    }
+  } catch (err: any) {
+    console.error('Failed to check for updates:', err)
+    updateError.value = err?.message || String(err)
+    setTimeout(() => {
+      updateError.value = null
+    }, 6000)
+  } finally {
+    isCheckingUpdates.value = false
+  }
+}
+
+const handleInstallUpdate = async () => {
+  if (!availableUpdate.value || isDownloadingUpdate.value) return
+  isDownloadingUpdate.value = true
+  downloadProgress.value = 0
+  updateError.value = null
+
+  let downloaded = 0
+  let total = 0
+
+  try {
+    await availableUpdate.value.downloadAndInstall((event) => {
+      if (event.event === 'Started') {
+        total = event.data.contentLength || 0
+      } else if (event.event === 'Progress') {
+        downloaded += event.data.chunkLength
+        if (total > 0) {
+          downloadProgress.value = Math.min(100, Math.round((downloaded / total) * 100))
+        }
+      } else if (event.event === 'Finished') {
+        downloadProgress.value = 100
+        isUpdateReady.value = true
+      }
+    })
+    isUpdateReady.value = true
+    await relaunch()
+  } catch (err: any) {
+    console.error('Failed to install update:', err)
+    updateError.value = err?.message || String(err)
+    isDownloadingUpdate.value = false
+  }
 }
 
 // CLI terminal installation state & logic
@@ -4116,6 +4226,7 @@ const applyCustomTz = () => {
 }
 
 onMounted(() => {
+  fetchAppVersion()
   loadMcpServers()
   fetchRuntimeStatus()
   checkAgySession()

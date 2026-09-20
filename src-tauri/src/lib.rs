@@ -3847,6 +3847,11 @@ async fn scheduler_get_task_runs(
     state.db.get_task_runs(task_id.as_deref(), limit.unwrap_or(50))
 }
 
+#[command]
+fn get_app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState::new();
@@ -3864,6 +3869,8 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             db_get_sessions,
@@ -4001,7 +4008,8 @@ pub fn run() {
             scheduler_run_now,
             scheduler_get_task_runs,
             start_autonomous_agent_task,
-            update_tray_locale
+            update_tray_locale,
+            get_app_version
         ])
         .setup(|app| {
             let handle = app.handle().clone();
