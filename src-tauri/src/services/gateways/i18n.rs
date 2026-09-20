@@ -155,3 +155,175 @@ pub fn get_default_system_prompt(lang: &str) -> &'static str {
         "You are Atena Studio, an intelligent, helpful, and friendly AI assistant. You communicate clearly, warmly, and concisely in natural language. When the user requests tasks, scripts, or commands, invoke available tools (<tool_call>) and present the final results in natural language."
     }
 }
+
+pub fn get_tool_approval_prompt(lang: &str, tool_name: &str, args_summary: &str) -> String {
+    if lang.starts_with("pt") {
+        format!(
+            "🛠️ **Permissão Solicitada para Ferramenta**\n\nA Atena precisa da sua autorização para executar:\n• **Ferramenta:** `{}`\n• **Parâmetros:**\n```json\n{}\n```\n\nDeseja autorizar a execução desta ferramenta?",
+            tool_name, args_summary
+        )
+    } else if lang.starts_with("es") {
+        format!(
+            "🛠️ **Permiso Solicitado para Herramienta**\n\nAtena necesita tu autorización para ejecutar:\n• **Herramienta:** `{}`\n• **Parámetros:**\n```json\n{}\n```\n\n¿Deseas autorizar la ejecución de esta herramienta?",
+            tool_name, args_summary
+        )
+    } else if lang.starts_with("zh") {
+        format!(
+            "🛠️ **工具调用权限请求**\n\nAtena 需要您的批准以执行以下工具：\n• **工具：** `{}`\n• **参数：**\n```json\n{}\n```\n\n是否批准执行此工具？",
+            tool_name, args_summary
+        )
+    } else if lang.starts_with("ru") {
+        format!(
+            "🛠️ **Запрос разрешения на запуск инструмента**\n\nAtena запрашивает разрешение на выполнение:\n• **Инструмент:** `{}`\n• **Параметры:**\n```json\n{}\n```\n\nРазрешить выполнение этого инструмента?",
+            tool_name, args_summary
+        )
+    } else {
+        format!(
+            "🛠️ **Tool Permission Request**\n\nAtena needs your authorization to execute:\n• **Tool:** `{}`\n• **Parameters:**\n```json\n{}\n```\n\nDo you want to authorize this tool execution?",
+            tool_name, args_summary
+        )
+    }
+}
+
+pub fn get_tool_approval_btn_approve(lang: &str) -> &'static str {
+    if lang.starts_with("pt") {
+        "✅ Autorizar"
+    } else if lang.starts_with("es") {
+        "✅ Autorizar"
+    } else if lang.starts_with("zh") {
+        "✅ 批准执行"
+    } else if lang.starts_with("ru") {
+        "✅ Разрешить"
+    } else {
+        "✅ Authorize"
+    }
+}
+
+pub fn get_tool_approval_btn_reject(lang: &str) -> &'static str {
+    if lang.starts_with("pt") {
+        "❌ Rejeitar"
+    } else if lang.starts_with("es") {
+        "❌ Rechazar"
+    } else if lang.starts_with("zh") {
+        "❌ 拒绝"
+    } else if lang.starts_with("ru") {
+        "❌ Отклонить"
+    } else {
+        "❌ Reject"
+    }
+}
+
+pub fn get_tool_approved_msg(lang: &str, tool_name: &str) -> String {
+    if lang.starts_with("pt") {
+        format!("✅ **Ferramenta autorizada:** `{}`\n\n_Executando..._", tool_name)
+    } else if lang.starts_with("es") {
+        format!("✅ **Herramienta autorizada:** `{}`\n\n_Ejecutando..._", tool_name)
+    } else if lang.starts_with("zh") {
+        format!("✅ **工具已批准：** `{}`\n\n_正在执行..._", tool_name)
+    } else if lang.starts_with("ru") {
+        format!("✅ **Инструмент одобрен:** `{}`\n\n_Выполняется..._", tool_name)
+    } else {
+        format!("✅ **Tool authorized:** `{}`\n\n_Executing..._", tool_name)
+    }
+}
+
+pub fn get_tool_rejected_msg(lang: &str, tool_name: &str) -> String {
+    if lang.starts_with("pt") {
+        format!("❌ **Ferramenta rejeitada pelo usuário:** `{}`", tool_name)
+    } else if lang.starts_with("es") {
+        format!("❌ **Herramienta rechazada por el usuario:** `{}`", tool_name)
+    } else if lang.starts_with("zh") {
+        format!("❌ **用户已拒绝工具执行：** `{}`", tool_name)
+    } else if lang.starts_with("ru") {
+        format!("❌ **Инструмент отклонен пользователем:** `{}`", tool_name)
+    } else {
+        format!("❌ **Tool rejected by user:** `{}`", tool_name)
+    }
+}
+
+pub fn get_tool_executing_toast(lang: &str) -> &'static str {
+    if lang.starts_with("pt") {
+        "Executando ferramenta..."
+    } else if lang.starts_with("es") {
+        "Ejecutando herramienta..."
+    } else if lang.starts_with("zh") {
+        "正在执行工具..."
+    } else if lang.starts_with("ru") {
+        "Выполняется инструмент..."
+    } else {
+        "Executing tool..."
+    }
+}
+
+pub fn get_tool_rejected_toast(lang: &str) -> &'static str {
+    if lang.starts_with("pt") {
+        "Execução cancelada."
+    } else if lang.starts_with("es") {
+        "Ejecución cancelada."
+    } else if lang.starts_with("zh") {
+        "已取消执行。"
+    } else if lang.starts_with("ru") {
+        "Выполнение отменено."
+    } else {
+        "Execution cancelled."
+    }
+}
+
+pub fn get_tool_user_rejected_prompt(lang: &str, tool_name: &str) -> String {
+    if lang.starts_with("pt") {
+        format!(
+            "O usuário recusou a execução da ferramenta '{}'. Avise educadamente que a ação não foi realizada e pergunte como prefere prosseguir.",
+            tool_name
+        )
+    } else if lang.starts_with("es") {
+        format!(
+            "El usuario rechazó la ejecución de la herramienta '{}'. Notifica amablemente que no se realizó la acción y consulta cómo prefiere continuar.",
+            tool_name
+        )
+    } else if lang.starts_with("zh") {
+        format!(
+            "用户拒绝了工具 '{}' 的执行。请礼貌告知操作未执行，并询问用户希望如何继续。",
+            tool_name
+        )
+    } else if lang.starts_with("ru") {
+        format!(
+            "Пользователь отклонил запуск инструмента '{}'. Вежливо сообщите, что действие не выполнено, и уточните, как продолжить.",
+            tool_name
+        )
+    } else {
+        format!(
+            "The user rejected the execution of tool '{}'. Politely inform them that the action was not taken and ask how they would like to proceed.",
+            tool_name
+        )
+    }
+}
+
+pub fn get_tool_results_prompt(lang: &str, tool_results_block: &str) -> String {
+    if lang.starts_with("pt") {
+        format!(
+            "[Retorno das Ferramentas Executadas]:\n{}\n\nPor favor, apresente o resultado final diretamente ao usuário de forma clara e objetiva.",
+            tool_results_block
+        )
+    } else if lang.starts_with("es") {
+        format!(
+            "[Resultado de las Herramientas Ejecutadas]:\n{}\n\nPor favor, presenta el resultado final directamente al usuario de forma clara y objetiva.",
+            tool_results_block
+        )
+    } else if lang.starts_with("zh") {
+        format!(
+            "[已执行工具返回结果]：\n{}\n\n请用清晰明了的语言直接向用户呈现最终结果。",
+            tool_results_block
+        )
+    } else if lang.starts_with("ru") {
+        format!(
+            "[Результаты выполнения инструментов]:\n{}\n\nПожалуйста, четко и ясно представьте окончательный ответ пользователю.",
+            tool_results_block
+        )
+    } else {
+        format!(
+            "[Tool Execution Results]:\n{}\n\nPlease present the final result directly to the user clearly and objectively.",
+            tool_results_block
+        )
+    }
+}
+

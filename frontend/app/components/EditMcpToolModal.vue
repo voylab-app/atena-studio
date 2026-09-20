@@ -74,7 +74,7 @@
             @click="formEnabled = !formEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-              formEnabled ? 'bg-emerald-500 shadow-sm shadow-emerald-500/30' : 'bg-[#1e2436]'
+              formEnabled ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'bg-[#1e2436]'
             ]"
             :title="formEnabled ? $t('modals.mcp_tool.disable_tool') : $t('modals.mcp_tool.enable_tool')"
           >

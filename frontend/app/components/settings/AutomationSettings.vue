@@ -147,7 +147,7 @@
               @click="toggleTask(task)"
               :class="[
                 'w-8 h-4.5 rounded-full transition-colors relative cursor-pointer',
-                task.enabled ? 'bg-emerald-600' : 'bg-slate-700'
+                task.enabled ? 'bg-indigo-600' : 'bg-slate-700'
               ]"
               :title="task.enabled ? 'Enabled' : 'Disabled'"
             >

@@ -67,6 +67,11 @@ Implemented using Tokio asynchronous HTTP long-polling against the official Tele
   * `/model`: Displays the currently loaded AI model and backend engine.
   * `/memory <query>`: Queries the local associative memory graph for facts and concepts.
   * `/id`: Returns the user's Telegram numeric User ID.
+* **Interactive Tool Approval via Inline Buttons:**
+  * External gateways inherit and respect the system's global MCP tools and permission modes. Atena checks the permission mode of every requested tool call (MCP servers and procedural skills).
+  * **Auto Mode (`auto`):** Tools execute automatically without interrupting the conversation.
+  * **Ask Mode (`ask`):** The Telegram Bot dispatches an interactive card detailing the tool name and formatted arguments with inline keyboard buttons (`✅ Authorize` / `❌ Reject` localized in `pt`, `en`, `es`, `zh`, `ru`).
+  * Tapping a button sends a Telegram `callback_query` that is whitelist-authenticated, edits the message to show confirmation status (removing buttons to avoid duplicate execution), and either executes the tool or marks it rejected before streaming the follow-up conversational response.
 
 ---
 

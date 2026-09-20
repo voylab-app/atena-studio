@@ -1441,38 +1441,25 @@ const handleStopGeneration = async () => {
   saveSessions()
 }
 
-const isToolActiveForInference = (t: any, isPrivate = false): boolean => {
+const isCognitiveOrSkillTool = (name?: string, serverId?: string): boolean => {
+  if (!name) return false
+  if (serverId === 'skills') return true
+  return (
+    name === 'atena_search_episodes' ||
+    name === 'atena_read_episode' ||
+    name === 'atena_search_memory' ||
+    name === 'create_procedural_skill' ||
+    name === 'update_procedural_skill' ||
+    name === 'edit_procedural_skill' ||
+    name === 'run_command' ||
+    name === 'run_skill_command' ||
+    name === 'run_skill_script'
+  )
+}
+
+const isToolActiveForInference = (t: any, _isPrivate = false): boolean => {
   if (!t || t.enabled === false) return false
-
-  const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
-  const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
-  const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
-  const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
-
-  if (isFactsDisabled && t.tool?.name === 'atena_search_memory') {
-    return false
-  }
-  if (
-    isEpisodicDisabled &&
-    (t.tool?.name === 'atena_search_episodes' || t.tool?.name === 'atena_read_episode')
-  ) {
-    return false
-  }
-
-  if (isSkillsDisabled) {
-    if (
-      t.server_id === 'skills' ||
-      t.tool?.name === 'run_command' ||
-      t.tool?.name === 'run_skill_command' ||
-      t.tool?.name === 'run_skill_script' ||
-      t.tool?.name === 'create_procedural_skill' ||
-      t.tool?.name === 'update_procedural_skill' ||
-      t.tool?.name === 'edit_procedural_skill'
-    ) {
-      return false
-    }
-  }
-
+  if (isCognitiveOrSkillTool(t.tool?.name, t.server_id)) return false
   return true
 }
 
@@ -1484,7 +1471,7 @@ const fetchMcpTools = async () => {
   try {
     const list = await invoke<any[]>('list_all_mcp_tools')
     if (list) {
-      mcpTools.value = list
+      mcpTools.value = list.filter((t: any) => !isCognitiveOrSkillTool(t.tool?.name, t.server_id))
     }
   } catch (err) {
     console.warn('Failed to load MCP tools:', err)

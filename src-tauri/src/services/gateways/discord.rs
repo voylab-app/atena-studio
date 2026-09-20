@@ -266,9 +266,7 @@ async fn handle_discord_message(
         .unwrap_or_else(|| default_sys_prompt.to_string());
 
     let mut params = crate::core::model::InferenceParams::default();
-    if config.enable_tools {
-        params.mcp_tools = Some(state.mcp_manager.list_all_tools().await);
-    }
+    params.mcp_tools = Some(state.mcp_manager.list_all_tools().await);
 
     let req = crate::StreamChatRequest {
         model: active_model.clone(),
@@ -282,10 +280,10 @@ async fn handle_discord_message(
         mlx_port: app_cfg.mlx_server_port,
         ollama_host: app_cfg.ollama_host.clone(),
         ollama_port: app_cfg.ollama_port,
-        enable_memory: Some(config.enable_memory),
-        enable_facts_memory: Some(config.enable_memory),
-        enable_skills_memory: Some(config.enable_tools),
-        enable_episodic_memory: Some(config.enable_memory),
+        enable_memory: Some(app_cfg.enable_cognitive_memory),
+        enable_facts_memory: Some(app_cfg.enable_facts_memory),
+        enable_skills_memory: Some(app_cfg.enable_skills_memory),
+        enable_episodic_memory: Some(app_cfg.enable_episodic_memory),
     };
 
     let accumulated_text = Arc::new(std::sync::Mutex::new(String::new()));
@@ -326,7 +324,7 @@ async fn handle_discord_message(
 
     // Check if the assistant requested tool calls to execute
     let tool_calls = captured_tool_calls.lock().unwrap().clone();
-    if config.enable_tools && !tool_calls.is_empty() {
+    if !tool_calls.is_empty() {
         let mut current_tool_calls = tool_calls;
         let mut loop_count = 0;
         while !current_tool_calls.is_empty() && loop_count < 3 {
@@ -419,10 +417,10 @@ async fn handle_discord_message(
                 mlx_port: app_cfg.mlx_server_port,
                 ollama_host: app_cfg.ollama_host.clone(),
                 ollama_port: app_cfg.ollama_port,
-                enable_memory: Some(config.enable_memory),
-                enable_facts_memory: Some(config.enable_memory),
-                enable_skills_memory: Some(config.enable_tools),
-                enable_episodic_memory: Some(config.enable_memory),
+                enable_memory: Some(app_cfg.enable_cognitive_memory),
+                enable_facts_memory: Some(app_cfg.enable_facts_memory),
+                enable_skills_memory: Some(app_cfg.enable_skills_memory),
+                enable_episodic_memory: Some(app_cfg.enable_episodic_memory),
             };
 
             let _ = crate::execute_stream_chat_internal(&state, fu_req, on_fu_chunk).await;

@@ -311,6 +311,57 @@ mod tests {
         assert!(cleaned.contains("# Python comment"));
         assert!(cleaned.contains("x = y ** 2"));
     }
+
+    #[test]
+    fn test_tool_approval_i18n_messages() {
+        use crate::services::gateways::i18n::*;
+
+        let languages = ["pt-BR", "en", "es", "zh-CN", "ru"];
+        for lang in &languages {
+            let prompt = get_tool_approval_prompt(lang, "test_tool", "{\"arg\": 1}");
+            assert!(prompt.contains("test_tool"));
+            assert!(prompt.contains("{\"arg\": 1}"));
+
+            let btn_approve = get_tool_approval_btn_approve(lang);
+            let btn_reject = get_tool_approval_btn_reject(lang);
+            assert!(!btn_approve.is_empty());
+            assert!(!btn_reject.is_empty());
+
+            let approved = get_tool_approved_msg(lang, "test_tool");
+            assert!(approved.contains("test_tool"));
+
+            let rejected = get_tool_rejected_msg(lang, "test_tool");
+            assert!(rejected.contains("test_tool"));
+
+            let toast_executing = get_tool_executing_toast(lang);
+            let toast_rejected = get_tool_rejected_toast(lang);
+            assert!(!toast_executing.is_empty());
+            assert!(!toast_rejected.is_empty());
+
+            let results_prompt = get_tool_results_prompt(lang, "OK");
+            assert!(results_prompt.contains("OK"));
+
+            let user_rej = get_tool_user_rejected_prompt(lang, "test_tool");
+            assert!(user_rej.contains("test_tool"));
+        }
+    }
+
+    #[test]
+    fn test_tool_approval_callback_data_prefix() {
+        let approval_id = "1726789012345_1";
+        let approve_data = format!("ta:{}", approval_id);
+        let reject_data = format!("tr:{}", approval_id);
+
+        assert!(approve_data.starts_with("ta:"));
+        assert_eq!(approve_data.strip_prefix("ta:"), Some(approval_id));
+
+        assert!(reject_data.starts_with("tr:"));
+        assert_eq!(reject_data.strip_prefix("tr:"), Some(approval_id));
+
+        // Telegram callback_data limit is 64 bytes
+        assert!(approve_data.len() <= 64);
+        assert!(reject_data.len() <= 64);
+    }
 }
 
 /// Converts double asterisks `**` to single asterisk `*` for Telegram Markdown outside inline code blocks.

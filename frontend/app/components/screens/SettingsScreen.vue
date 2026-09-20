@@ -416,6 +416,73 @@
             </button>
           </div>
 
+          <!-- Background Execution & System Tray Card -->
+          <div class="rounded-2xl bg-[#111420] border border-[#1e2336] overflow-hidden shadow-sm divide-y divide-[#1e2336]">
+            <div class="p-4 bg-[#141828]/50 flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                <Monitor class="w-4 h-4" />
+              </div>
+              <div>
+                <h4 class="text-xs font-bold text-slate-200">{{ $t('settings.gateways.system_tray_card_title') }}</h4>
+                <p class="text-[11px] text-slate-400 mt-0.5">{{ $t('settings.gateways.system_tray_card_desc') }}</p>
+              </div>
+            </div>
+
+            <!-- Close to Tray toggle -->
+            <div class="p-4 flex items-center justify-between">
+              <div class="pr-4">
+                <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.close_to_tray_title') }}</span>
+                <p class="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                  {{ $t('settings.gateways.close_to_tray_desc') }}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="config.close_to_tray"
+                @click="config.close_to_tray = !config.close_to_tray; saveSettings()"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                  config.close_to_tray ? 'bg-indigo-600' : 'bg-slate-700'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out',
+                    config.close_to_tray ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
+
+            <!-- Run in Background toggle -->
+            <div class="p-4 flex items-center justify-between">
+              <div class="pr-4">
+                <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.run_in_background_title') }}</span>
+                <p class="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                  {{ $t('settings.gateways.run_in_background_desc') }}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="config.run_in_background"
+                @click="config.run_in_background = !config.run_in_background; saveSettings()"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                  config.run_in_background ? 'bg-indigo-600' : 'bg-slate-700'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out',
+                    config.run_in_background ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
+          </div>
+
           <!-- macOS Card 2: Runtime options -->
           <div
             class="rounded-2xl bg-[#111420] border border-[#1e2336] overflow-hidden shadow-sm divide-y divide-[#1e2336]">
@@ -485,7 +552,7 @@
               </div>
               <button type="button" role="switch" :aria-checked="Boolean(config.show_efficiency_metrics !== false)" @click="config.show_efficiency_metrics = config.show_efficiency_metrics === false ? true : false; saveSettings()" :class="[
                 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                config.show_efficiency_metrics !== false ? 'bg-teal-600 shadow-sm shadow-teal-600/30' : 'bg-[#1e2436]'
+                config.show_efficiency_metrics !== false ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'bg-[#1e2436]'
               ]">
                 <span :class="[
                   'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
@@ -2145,7 +2212,7 @@
               <button type="button" role="switch" :aria-checked="Boolean(params.enable_thinking !== false)" @click="params.enable_thinking = params.enable_thinking === false ? true : false"
                 :class="[
                   'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                  params.enable_thinking !== false ? 'bg-purple-600 shadow-sm shadow-purple-600/30' : 'bg-[#1e2436]'
+                  params.enable_thinking !== false ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'bg-[#1e2436]'
                 ]">
                 <span :class="[
                   'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
@@ -2197,7 +2264,7 @@
                   @click="params.enable_prompt_cache = params.enable_prompt_cache === false ? true : false"
                   :class="[
                     'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                    params.enable_prompt_cache !== false ? 'bg-teal-600 shadow-sm shadow-teal-600/30' : 'bg-[#1e2436]'
+                    params.enable_prompt_cache !== false ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'bg-[#1e2436]'
                   ]"
                 >
                   <span :class="[
