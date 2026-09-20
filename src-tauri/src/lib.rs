@@ -15,6 +15,8 @@ use crate::core::hardware::SystemHardwareInfo;
 use crate::core::mcp::{McpServerConfig, McpToolDefinition, McpToolWithServer};
 use crate::core::memory::{CompressionType, GraphOptimizationReport, NodeType, ProceduralSkill, RelationType, SkillCommandResult, SkillScriptFilePayload, SkillStep, SleepConsolidationReport, VigiliaEvent};
 use crate::core::model::{BackendType, ChatMessage, InferenceParams, ModelInfo};
+#[allow(unused_imports)]
+use crate::core::process::{silent_command, silent_tokio_command, SilentCommand};
 use crate::core::server::{DeveloperLogEntry, ServerRequestLog};
 use crate::services::backend::{BackendManager, ModelLoadProgress};
 use crate::services::downloader::{
@@ -184,7 +186,7 @@ async fn open_url(url: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd").args(["/C", "start", &url]).spawn();
+        let _ = silent_command("cmd").args(["/C", "start", &url]).spawn();
     }
     #[cfg(target_os = "linux")]
     {
@@ -335,7 +337,7 @@ pub async fn check_cli_installed_internal() -> Result<CliStatus, String> {
 
     #[cfg(windows)]
     {
-        if let Ok(output) = std::process::Command::new("where").arg("atena").output() {
+        if let Ok(output) = silent_command("where").arg("atena").output() {
             if output.status.success() {
                 let found = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !found.is_empty() {
@@ -438,7 +440,7 @@ pub async fn install_cli_command_internal() -> Result<String, String> {
             target_dir.to_string_lossy()
         );
 
-        let out = std::process::Command::new("powershell")
+        let out = silent_command("powershell")
             .args(["-NoProfile", "-Command", &ps_script])
             .output()
             .map_err(|e| e.to_string())?;
@@ -2580,7 +2582,7 @@ async fn convert_audio_to_pcm(audio_base64: String) -> Result<AudioPcmResult, St
         .unwrap_or_else(|| std::path::PathBuf::from("ffmpeg"));
 
     // Run FFmpeg to convert to raw PCM float32, 16kHz, mono
-    let ffmpeg_result = tokio::process::Command::new(&ffmpeg_bin)
+    let ffmpeg_result = silent_tokio_command(&ffmpeg_bin)
         .env("PATH", &aug_path)
         .arg("-y")
         .arg("-i")
@@ -2764,7 +2766,7 @@ except Exception as e:
 "#;
 
     let output_res = if let Some(py_path) = RuntimeManager::isolated_python() {
-        tokio::process::Command::new(&py_path)
+        silent_tokio_command(&py_path)
             .env("PATH", &aug_path)
             .arg("-c")
             .arg(py_script)
@@ -2774,7 +2776,7 @@ except Exception as e:
             .output()
             .await
     } else if let Some(uv_path) = RuntimeManager::resolve_binary("uv") {
-        tokio::process::Command::new(&uv_path)
+        silent_tokio_command(&uv_path)
             .env("PATH", &aug_path)
             .arg("run")
             .arg("--with")
@@ -2788,7 +2790,7 @@ except Exception as e:
             .output()
             .await
     } else if let Some(py_bin) = RuntimeManager::get_python() {
-        tokio::process::Command::new(&py_bin)
+        silent_tokio_command(&py_bin)
             .env("PATH", &aug_path)
             .arg("-c")
             .arg(py_script)
@@ -2798,7 +2800,7 @@ except Exception as e:
             .output()
             .await
     } else {
-        tokio::process::Command::new(if cfg!(target_os = "windows") { "python" } else { "python3" })
+        silent_tokio_command(if cfg!(target_os = "windows") { "python" } else { "python3" })
             .env("PATH", &aug_path)
             .arg("-c")
             .arg(py_script)
@@ -3583,7 +3585,7 @@ async fn open_plugins_folder() -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd").args(["/C", "start", &folder.to_string_lossy().to_string()]).spawn();
+        let _ = silent_command("cmd").args(["/C", "start", &folder.to_string_lossy().to_string()]).spawn();
     }
     #[cfg(target_os = "linux")]
     {

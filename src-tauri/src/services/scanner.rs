@@ -4,6 +4,7 @@ use tokio::fs;
 use base64::Engine as _;
 
 use crate::core::model::{BackendType, ModelFormat, ModelInfo, ModelStatus};
+use crate::core::process::silent_tokio_command;
 
 use serde::{Deserialize, Serialize};
 
@@ -1358,7 +1359,7 @@ impl ModelScanner {
 
         if let Some(ref agy_path) = agy_path_opt {
             // Query the CLI for available models
-            let mut cmd = tokio::process::Command::new(agy_path);
+            let mut cmd = silent_tokio_command(agy_path);
             cmd.arg("models");
             cmd.env("PATH", crate::services::backend::BackendManager::augmented_path());
             cmd.stdout(std::process::Stdio::piped());

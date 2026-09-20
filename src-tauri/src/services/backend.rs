@@ -15,6 +15,8 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 use crate::core::model::{BackendType, InferenceParams, ModelInfo};
+#[allow(unused_imports)]
+use crate::core::process::{silent_command, silent_tokio_command, SilentCommand};
 
 pub struct StreamingThinkingState {
     pub in_think_tag: bool,
@@ -568,7 +570,7 @@ impl BackendManager {
         let bin_str = bin_path.to_string_lossy().to_string();
 
         // Run `agy models` with adequate timeout to confirm live auth and fetch available models
-        let mut cmd = Command::new(&bin_path);
+        let mut cmd = silent_tokio_command(&bin_path);
         cmd.env("PATH", Self::augmented_path());
         cmd.arg("models");
         cmd.stdout(std::process::Stdio::piped());
@@ -656,7 +658,7 @@ impl BackendManager {
         let bin_path = Self::find_agy_binary()
             .ok_or_else(|| "Executável do Antigravity (`agy`) não encontrado no sistema.".to_string())?;
 
-        let mut cmd = Command::new(&bin_path);
+        let mut cmd = silent_tokio_command(&bin_path);
         cmd.env("PATH", Self::augmented_path());
         cmd.args(["--output-format", "json", "-p=/usage"]);
         cmd.stdout(std::process::Stdio::piped());
@@ -1195,7 +1197,7 @@ impl BackendManager {
         // Kill any orphaned llama-server process holding the port
         #[cfg(target_os = "windows")]
         {
-            let _ = Command::new("taskkill").args(["/F", "/IM", "llama-server.exe"]).output().await;
+            let _ = silent_tokio_command("taskkill").args(["/F", "/IM", "llama-server.exe"]).output().await;
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -1221,7 +1223,7 @@ impl BackendManager {
                     .join("llama-server")
             });
 
-        let mut base_cmd = Command::new(&llama_bin);
+        let mut base_cmd = silent_tokio_command(&llama_bin);
         base_cmd.env("PATH", &aug_path);
 
         // macOS: set DYLD library paths for Metal acceleration, ensuring llama directory is prioritized
@@ -1300,7 +1302,7 @@ impl BackendManager {
 
         let child = base_cmd.spawn().or_else(|_| {
             // Fallback: try plain "llama-server" on PATH
-            let mut alt = Command::new(if cfg!(target_os = "windows") { "llama-server.exe" } else { "llama-server" });
+            let mut alt = silent_tokio_command(if cfg!(target_os = "windows") { "llama-server.exe" } else { "llama-server" });
             alt.env("PATH", &aug_path);
 
             #[cfg(target_os = "macos")]
@@ -1513,11 +1515,11 @@ impl BackendManager {
 
         #[cfg(target_os = "windows")]
         {
-            let _ = std::process::Command::new("taskkill")
+            let _ = silent_command("taskkill")
                 .args(["/F", "/IM", "llama-server.exe"])
                 .output();
             if ollama_was_spawned {
-                let _ = std::process::Command::new("taskkill")
+                let _ = silent_command("taskkill")
                     .args(["/F", "/IM", "ollama.exe"])
                     .output();
             }
@@ -3965,7 +3967,7 @@ impl BackendManager {
                 let model_name = model.id.trim_start_matches("agy/").to_string();
                 let prompt_text = Self::build_antigravity_prompt(system_prompt, messages, params.mcp_tools.as_deref());
 
-                let mut cmd = Command::new(&agy_bin);
+                let mut cmd = silent_tokio_command(&agy_bin);
                 cmd.env("PATH", Self::augmented_path());
                 cmd.arg("--input-format").arg("stream-json");
                 cmd.arg("--output-format").arg("stream-json");
@@ -4602,7 +4604,7 @@ impl BackendManager {
                     .unwrap_or("");
 
                 let aug_path = Self::augmented_path();
-                if let Ok(out) = Command::new("ollama")
+                if let Ok(out) = silent_tokio_command("ollama")
                     .env("PATH", &aug_path)
                     .arg("run")
                     .arg(&model_name)
@@ -4624,7 +4626,7 @@ impl BackendManager {
                 let model_name = model.id.trim_start_matches("agy/").to_string();
                 let prompt_text = Self::build_antigravity_prompt(system_prompt, messages, params.mcp_tools.as_deref());
 
-                let mut cmd = Command::new(&agy_bin);
+                let mut cmd = silent_tokio_command(&agy_bin);
                 cmd.env("PATH", Self::augmented_path());
                 cmd.arg("--output-format=json");
                 cmd.arg("--dangerously-skip-permissions");

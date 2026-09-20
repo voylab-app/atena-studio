@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use crate::core::mcp::{McpServerConfig, McpToolDefinition, McpToolWithServer, McpTransportType};
+use crate::core::process::silent_tokio_command;
 use crate::services::backend::BackendManager;
 
 pub struct McpManager {
@@ -530,7 +530,7 @@ impl McpManager {
                 let (cmd_path, args) = Self::resolve_command_and_args(server)?;
                 let aug_path = BackendManager::augmented_path();
 
-                let mut cmd = Command::new(&cmd_path);
+                let mut cmd = silent_tokio_command(&cmd_path);
                 cmd.env("PATH", &aug_path);
                 if let Some(py_path) = crate::services::runtime::RuntimeManager::isolated_python() {
                     cmd.env("UV_PYTHON", py_path);
@@ -1240,7 +1240,7 @@ impl McpManager {
                 let (cmd_path, args) = Self::resolve_command_and_args(&server)?;
                 let aug_path = BackendManager::augmented_path();
 
-                let mut cmd = Command::new(&cmd_path);
+                let mut cmd = silent_tokio_command(&cmd_path);
                 cmd.env("PATH", &aug_path);
                 if let Some(py_path) = crate::services::runtime::RuntimeManager::isolated_python() {
                     cmd.env("UV_PYTHON", py_path);

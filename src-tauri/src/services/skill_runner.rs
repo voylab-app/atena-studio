@@ -4,6 +4,7 @@ use std::process::Stdio;
 use std::time::Instant;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
+use crate::core::process::silent_tokio_command;
 
 use crate::core::memory::SkillCommandResult;
 
@@ -89,7 +90,7 @@ impl SkillScriptRunner {
 
         #[cfg(target_os = "windows")]
         let mut cmd = {
-            let mut c = Command::new("cmd.exe");
+            let mut c = silent_tokio_command("cmd.exe");
             c.arg("/C").arg(command_str);
             c
         };
@@ -205,12 +206,12 @@ impl SkillScriptRunner {
 
         let mut cmd = match ext.as_str() {
             "py" => {
-                let mut c = Command::new("python3");
+                let mut c = silent_tokio_command("python3");
                 c.arg(&script_path);
                 c
             }
             "js" => {
-                let mut c = Command::new("node");
+                let mut c = silent_tokio_command("node");
                 c.arg(&script_path);
                 c
             }
@@ -222,23 +223,23 @@ impl SkillScriptRunner {
                 } else {
                     "/bin/sh"
                 };
-                let mut c = Command::new(shell);
+                let mut c = silent_tokio_command(shell);
                 c.arg(&script_path);
                 c
             }
             "ps1" => {
-                let mut c = Command::new("powershell.exe");
+                let mut c = silent_tokio_command("powershell.exe");
                 c.arg("-ExecutionPolicy").arg("Bypass").arg("-File").arg(&script_path);
                 c
             }
             "bat" | "cmd" => {
-                let mut c = Command::new("cmd.exe");
+                let mut c = silent_tokio_command("cmd.exe");
                 c.arg("/C").arg(&script_path);
                 c
             }
             _ => {
                 // Try executing the script path directly
-                let c = Command::new(&script_path);
+                let c = silent_tokio_command(&script_path);
                 c
             }
         };

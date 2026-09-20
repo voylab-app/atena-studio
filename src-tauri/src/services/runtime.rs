@@ -6,6 +6,8 @@ use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
+#[allow(unused_imports)]
+use crate::core::process::{silent_command, silent_tokio_command, SilentCommand};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeStatus {
@@ -234,7 +236,7 @@ impl RuntimeManager {
 
         #[cfg(target_os = "windows")]
         {
-            if let Ok(out) = std::process::Command::new("where.exe").arg(&bin_name).output() {
+            if let Ok(out) = silent_command("where.exe").arg(&bin_name).output() {
                 if out.status.success() {
                     let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
                     // where.exe may return multiple lines; check each
@@ -494,7 +496,7 @@ impl RuntimeManager {
     /// Returns installed llama-server version if available and runnable
     pub async fn get_llama_version() -> Option<String> {
         if let Some(llama_bin) = Self::resolve_binary("llama-server") {
-            let mut cmd = Command::new(&llama_bin);
+            let mut cmd = silent_tokio_command(&llama_bin);
             #[cfg(target_os = "macos")]
             {
                 let home = std::env::var("HOME").unwrap_or_default();
@@ -824,7 +826,7 @@ impl RuntimeManager {
             progress_percent: 30,
         });
 
-        let venv_out = Command::new(&uv_bin)
+        let venv_out = silent_tokio_command(&uv_bin)
             .env("PATH", &aug_path)
             .arg("venv")
             .arg(&venv_dir)
@@ -838,7 +840,7 @@ impl RuntimeManager {
         if !venv_out.status.success() {
             let err_str = String::from_utf8_lossy(&venv_out.stderr);
             // Try without specifying exact python version as fallback
-            let fallback_out = Command::new(&uv_bin)
+            let fallback_out = silent_tokio_command(&uv_bin)
                 .env("PATH", &aug_path)
                 .arg("venv")
                 .arg(&venv_dir)
@@ -879,7 +881,7 @@ impl RuntimeManager {
             progress_percent: 60,
         });
 
-        let pip_out = Command::new(&uv_bin)
+        let pip_out = silent_tokio_command(&uv_bin)
             .env("PATH", &aug_path)
             .arg("pip")
             .arg("install")
@@ -945,7 +947,7 @@ impl RuntimeManager {
             progress_percent: 40,
         });
 
-        let pip_out = Command::new(&uv_bin)
+        let pip_out = silent_tokio_command(&uv_bin)
             .env("PATH", &aug_path)
             .arg("pip")
             .arg("install")
@@ -1072,7 +1074,7 @@ impl RuntimeManager {
         });
 
         if is_tar {
-            let tar_status = Command::new("tar")
+            let tar_status = silent_tokio_command("tar")
                 .arg("-xzf")
                 .arg(&temp_archive)
                 .arg("-C")
@@ -1083,7 +1085,7 @@ impl RuntimeManager {
 
             if let Ok(ref out) = tar_status {
                 if !out.status.success() {
-                    let _ = Command::new("tar")
+                    let _ = silent_tokio_command("tar")
                         .arg("-xzf")
                         .arg(&temp_archive)
                         .arg("-C")
@@ -1093,7 +1095,7 @@ impl RuntimeManager {
                 }
             }
         } else {
-            let _ = Command::new("tar.exe")
+            let _ = silent_tokio_command("tar.exe")
                 .arg("-xf")
                 .arg(&temp_archive)
                 .arg("-C")
@@ -1315,7 +1317,7 @@ fn is_binary_runnable(path: &Path) -> bool {
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_lowercase();
     let arg = if file_name.contains("ffmpeg") { "-version" } else { "--version" };
 
-    let mut cmd = std::process::Command::new(path);
+    let mut cmd = silent_command(path);
     #[cfg(target_os = "macos")]
     {
         let home = std::env::var("HOME").unwrap_or_default();

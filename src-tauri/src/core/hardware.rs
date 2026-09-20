@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
+use crate::core::process::silent_command;
 
 #[cfg(target_os = "macos")]
 extern "C" {
@@ -58,7 +60,7 @@ impl SystemHardwareInfo {
         }
         #[cfg(not(target_os = "macos"))]
         {
-            std::process::Command::new("nvidia-smi")
+            silent_command("nvidia-smi")
                 .arg("-L")
                 .output()
                 .map(|o| o.status.success())
@@ -74,7 +76,7 @@ impl SystemHardwareInfo {
         }
         #[cfg(target_os = "windows")]
         {
-            let out = std::process::Command::new("wmic")
+            let out = silent_command("wmic")
                 .args(["path", "win32_VideoController", "get", "Name"])
                 .output()
                 .ok()
@@ -445,7 +447,7 @@ impl SystemHardwareInfo {
     #[cfg(target_os = "windows")]
     fn detect_system_windows() -> Self {
         // Total physical memory via wmic
-        let mem_bytes = std::process::Command::new("wmic")
+        let mem_bytes = silent_command("wmic")
             .args(["ComputerSystem", "get", "TotalPhysicalMemory", "/value"])
             .output()
             .ok()
@@ -461,7 +463,7 @@ impl SystemHardwareInfo {
         let total_ram_gb = (mem_bytes as f32) / (1024.0 * 1024.0 * 1024.0);
 
         // CPU name
-        let chip = std::process::Command::new("wmic")
+        let chip = silent_command("wmic")
             .args(["cpu", "get", "Name", "/value"])
             .output()
             .ok()
@@ -475,7 +477,7 @@ impl SystemHardwareInfo {
             .unwrap_or_else(|| "CPU".to_string());
 
         // GPU name for display
-        let gpu_name = std::process::Command::new("wmic")
+        let gpu_name = silent_command("wmic")
             .args(["path", "win32_VideoController", "get", "Name", "/value"])
             .output()
             .ok()
@@ -489,7 +491,7 @@ impl SystemHardwareInfo {
             .unwrap_or_else(|| "GPU".to_string());
 
         // Computer model
-        let device_name = std::process::Command::new("wmic")
+        let device_name = silent_command("wmic")
             .args(["ComputerSystem", "get", "Model", "/value"])
             .output()
             .ok()
@@ -523,7 +525,7 @@ impl SystemHardwareInfo {
         };
 
         // Try to detect dedicated VRAM via wmic
-        let vram_bytes = std::process::Command::new("wmic")
+        let vram_bytes = silent_command("wmic")
             .args(["path", "win32_VideoController", "get", "AdapterRAM", "/value"])
             .output()
             .ok()
@@ -563,7 +565,7 @@ impl SystemHardwareInfo {
     #[cfg(target_os = "windows")]
     fn read_used_ram_gb_windows() -> f32 {
         // Get free physical memory (in KB) then subtract from total
-        let free_kb = std::process::Command::new("wmic")
+        let free_kb = silent_command("wmic")
             .args(["OS", "get", "FreePhysicalMemory", "/value"])
             .output()
             .ok()
@@ -576,7 +578,7 @@ impl SystemHardwareInfo {
             })
             .unwrap_or(0);
 
-        let total_kb = std::process::Command::new("wmic")
+        let total_kb = silent_command("wmic")
             .args(["ComputerSystem", "get", "TotalPhysicalMemory", "/value"])
             .output()
             .ok()
@@ -596,7 +598,7 @@ impl SystemHardwareInfo {
     /// Reads AI process memory on Windows via tasklist
     #[cfg(target_os = "windows")]
     fn read_ai_process_ram_gb_windows() -> f32 {
-        let output = match std::process::Command::new("tasklist")
+        let output = match silent_command("tasklist")
             .args(["/FO", "CSV", "/NH"])
             .output()
         {
@@ -630,7 +632,7 @@ impl SystemHardwareInfo {
     /// Reads CPU usage on Windows via wmic
     #[cfg(target_os = "windows")]
     fn read_cpu_usage_windows() -> f32 {
-        std::process::Command::new("wmic")
+        silent_command("wmic")
             .args(["cpu", "get", "LoadPercentage", "/value"])
             .output()
             .ok()
@@ -648,7 +650,7 @@ impl SystemHardwareInfo {
     #[cfg(target_os = "windows")]
     fn read_gpu_usage_windows() -> f32 {
         // Try nvidia-smi for NVIDIA GPUs
-        if let Ok(out) = std::process::Command::new("nvidia-smi")
+        if let Ok(out) = silent_command("nvidia-smi")
             .args(["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"])
             .output()
         {
