@@ -74,3 +74,28 @@ Atena bundles local sidecars to ensure 100% offline functionality without mandat
 | `uv` | Isolated Python runtime and environment manager | `binaries/uv-<target>` |
 
 The `scripts/setup-sidecars.js` runner automatically delegates to `scripts/setup-sidecars.ps1` (Windows) or `scripts/setup-sidecars.sh` (macOS/Linux) to provision these dependencies.
+
+---
+
+## 🔄 5. In-App Auto-Update & Signing Key Setup
+
+Atena Studio includes native auto-update support powered by Tauri v2 Updater (`@tauri-apps/plugin-updater`).
+
+### 1. Update Manifest Endpoint
+The client queries GitHub Releases directly:
+`https://github.com/voylab-app/atena-studio/releases/latest/download/latest.json`
+
+### 2. Cryptographic Signing Keys
+To protect users from malicious or forged updates, Tauri requires Ed25519 digital signatures for all distributed archives.
+
+* **Public Key**: Embedded in `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
+* **Private Key (CI/CD Secret)**: Must be stored in GitHub Repository Secrets under:
+  - `TAURI_SIGNING_PRIVATE_KEY`: Content of the generated private key.
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: Passphrase if set (empty if no password).
+
+### 3. Release Lifecycle
+When a tag like `v0.2.0` is pushed:
+1. GitHub Actions compiles the app across macOS, Windows, and Linux.
+2. `tauri-apps/tauri-action@v1` signs the update bundles, generates `latest.json`, and attaches them to the GitHub Release.
+3. Client installations check the update channel either automatically or via **Settings -> Updates Channel**, download the update with real-time progress, and relaunch seamlessly.
+
