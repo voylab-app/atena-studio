@@ -30,7 +30,10 @@ if (-not (Test-Path $UvDest)) {
         $UvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-$TargetTriple.zip"
         Invoke-WebRequest -Uri $UvUrl -OutFile $UvZip
         Expand-Archive -Path $UvZip -DestinationPath "$env:TEMP\uv_extracted" -Force
-        Copy-Item -Path "$env:TEMP\uv_extracted\uv-$TargetTriple\uv.exe" -Destination $UvDest -Force
+        $ExtractedUv = Get-ChildItem -Path "$env:TEMP\uv_extracted" -Recurse -Filter "uv.exe" | Select-Object -First 1
+        if ($ExtractedUv) {
+            Copy-Item -Path $ExtractedUv.FullName -Destination $UvDest -Force
+        }
     }
 }
 if (Test-Path $UvDest) {
