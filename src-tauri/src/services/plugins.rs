@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use crate::core::process::silent_command;
 
 /// Plugin type or category
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -392,7 +393,7 @@ impl PluginManager {
             )
         })?;
 
-        let mut child = std::process::Command::new(&bin)
+        let mut child = silent_command(&bin)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
