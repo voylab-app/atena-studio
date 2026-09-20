@@ -36,7 +36,8 @@ You can register multiple MCP servers in Atena Studio's Settings by specifying:
 1. **Dynamic Tool Inspection**: Atena Studio requests available tools via `tools/list` and formats them into JSON Schema specifications compliant with the LLM.
 2. **Tool Calling**: When the model determines an external action is required, it emits a structured function call request.
 3. **User Approval Flow**: By default, Atena Studio displays an in-chat card requiring the user to **Approve** or **Reject** tool execution before running, ensuring complete control and safety.
-4. **Auto-Execution (Optional)**: Users can enable automatic execution for non-destructive read-only tools.
+4. **Auto-Execution (Optional)**: Users can enable automatic execution for non-destructive read-only tools by switching their permission mode to `auto`.
+5. **Universal Channel Governance (Gateways)**: External communication gateways (such as Telegram and Discord bots) and background schedulers strictly adhere to this central permission model. Tools configured with `auto` execute directly across all channels, whereas tools configured with `ask` trigger interactive approval prompts (such as inline buttons in Telegram/Discord) before running.
 
 ---
 

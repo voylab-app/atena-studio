@@ -88,7 +88,7 @@
             @click="toggleCurrentLayer"
             :class="[
               'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-              isCurrentLayerActive ? 'bg-emerald-600 shadow-sm shadow-emerald-600/30' : 'bg-[#22283b]'
+              isCurrentLayerActive ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'bg-[#22283b]'
             ]"
           >
             <span

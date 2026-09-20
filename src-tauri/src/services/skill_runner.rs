@@ -564,6 +564,7 @@ mod tests {
     async fn test_procedural_skills_tools_suppressed_when_memory_disabled() {
         use crate::services::mcp_service::McpManager;
         let mut tools = McpManager::native_atena_tools();
+        tools.extend(McpManager::memory_and_skills_tools());
 
         let use_skills = false;
         if !use_skills {

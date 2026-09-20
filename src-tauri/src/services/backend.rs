@@ -1708,6 +1708,16 @@ impl BackendManager {
             tc.server_name = Some("Procedural Skills".to_string());
         }
 
+        if tc.server_id.is_none()
+            && (tc.name == "atena_search_memory"
+                || tc.name == "atena_search_episodes"
+                || tc.name == "atena_read_episode")
+        {
+            tc.server_id = Some("atena_native".to_string());
+            tc.server_name = Some("Atena Core (Memory & Episodes)".to_string());
+            tc.permission_mode = Some("auto".to_string());
+        }
+
         // Check if matching procedural skill defines auto permission
         if tc.server_id.as_deref() == Some("skills")
             || tc.name == "run_command"

@@ -1176,7 +1176,6 @@ impl McpManager {
                 permission_mode: "auto".to_string(),
             });
         }
-        tools.extend(Self::memory_and_skills_tools());
         tools
     }
 
@@ -1215,9 +1214,6 @@ impl McpManager {
                 }
             }
         }
-
-        // Include associative memory and procedural skill tools for cognitive memory toggle processing
-        results.extend(Self::memory_and_skills_tools());
 
         results
     }

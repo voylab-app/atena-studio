@@ -250,7 +250,7 @@
                 :aria-checked="isModelEnabled(m.id)"
                 @click="toggleModelEnabled(m.id)"
                 class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                :class="isModelEnabled(m.id) ? 'bg-amber-600' : 'bg-[#22283a]'"
+                :class="isModelEnabled(m.id) ? 'bg-indigo-600' : 'bg-[#22283a]'"
                 :title="isModelEnabled(m.id) ? $t('cloud.visible_in_menu') : $t('cloud.hidden_in_menu')"
               >
                 <span
@@ -287,7 +287,7 @@
             @click="toggleProvider('gemini')"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-              providersConfig.gemini_enabled ? 'bg-blue-600 shadow-sm shadow-blue-600/30' : 'bg-[#1e2436]'
+              providersConfig.gemini_enabled ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'bg-[#1e2436]'
             ]"
           >
             <span
@@ -477,7 +477,7 @@
                   :aria-checked="isModelEnabled(m.id)"
                   @click="toggleModelEnabled(m.id)"
                   class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                  :class="isModelEnabled(m.id) ? 'bg-blue-600' : 'bg-[#22283a]'"
+                  :class="isModelEnabled(m.id) ? 'bg-indigo-600' : 'bg-[#22283a]'"
                   :title="isModelEnabled(m.id) ? $t('cloud.visible_in_menu_tooltip') : $t('cloud.hidden_in_menu_tooltip')"
                 >
                   <span
@@ -515,7 +515,7 @@
             @click="toggleProvider('groq')"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-              providersConfig.groq_enabled ? 'bg-orange-600 shadow-sm shadow-orange-600/30' : 'bg-[#1e2436]'
+              providersConfig.groq_enabled ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'bg-[#1e2436]'
             ]"
           >
             <span
@@ -709,7 +709,7 @@
                   :aria-checked="isModelEnabled(m.id)"
                   @click="toggleModelEnabled(m.id)"
                   class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                  :class="isModelEnabled(m.id) ? 'bg-orange-600' : 'bg-[#22283a]'"
+                  :class="isModelEnabled(m.id) ? 'bg-indigo-600' : 'bg-[#22283a]'"
                   :title="isModelEnabled(m.id) ? $t('cloud.visible_in_menu_tooltip') : $t('cloud.hidden_in_menu_tooltip')"
                 >
                   <span
@@ -1166,7 +1166,7 @@
                   :aria-checked="isModelEnabled(m.id)"
                   @click="toggleModelEnabled(m.id)"
                   class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                  :class="isModelEnabled(m.id) ? 'bg-purple-600' : 'bg-[#22283a]'"
+                  :class="isModelEnabled(m.id) ? 'bg-indigo-600' : 'bg-[#22283a]'"
                   :title="isModelEnabled(m.id) ? $t('cloud.visible_in_menu_tooltip') : $t('cloud.hidden_in_menu_tooltip')"
                 >
                   <span
@@ -1332,7 +1332,7 @@
                 :aria-checked="isModelEnabled(m.id)"
                 @click="toggleModelEnabled(m.id)"
                 class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                :class="isModelEnabled(m.id) ? 'bg-sky-600' : 'bg-[#22283a]'"
+                :class="isModelEnabled(m.id) ? 'bg-indigo-600' : 'bg-[#22283a]'"
                 :title="isModelEnabled(m.id) ? $t('cloud.visible_in_menu_tooltip') : $t('cloud.hidden_in_menu_tooltip')"
               >
                 <span

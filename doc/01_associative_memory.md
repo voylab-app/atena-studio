@@ -153,6 +153,8 @@ To allow end users full control over token consumption and contextual injection,
 3. **Logbook / Diary (`enable_episodic_memory` - Episodic Layer):**
    - Manages chronological turn continuity and persists user/assistant dialogue turns into the daily wakefulness buffer (`diario_vigilia.atena`) and linked episodic Markdown logs.
    - When paused, past turn episodes are not retrieved and new wakefulness events are suspended.
+4. **Universal Channel & Gateway Governance:**
+   - External communication gateways (Telegram, Discord) and autonomous background schedulers strictly inherit and honor these layer toggles in real time. Pausing or enabling memory layers in Atena Studio takes effect universally across all active communication channels.
 
 ### 🧭 Control Surfaces
 - **Global Settings Panel (`SettingsScreen.vue`):** Under the Master Cognitive Memory switch, three dedicated toggle switches allow fine-tuning of each layer.

@@ -34,14 +34,6 @@
     <div class="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-[#0e101a] border border-[#1b2033] text-xs text-slate-400 flex-wrap gap-2 shadow-sm">
       <div class="flex items-center gap-2.5 flex-wrap">
         <div class="flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full" :class="localConfig.close_to_tray ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'" />
-          <span class="text-slate-200 font-medium">{{ $t('settings.gateways.tray_status') }}:</span>
-          <span :class="localConfig.close_to_tray ? 'text-emerald-400 font-semibold' : 'text-slate-500'">
-            {{ localConfig.close_to_tray ? $t('settings.gateways.tray_active') : $t('common.disabled') }}
-          </span>
-        </div>
-        <span class="text-slate-600">•</span>
-        <div class="flex items-center gap-1.5">
           <span class="w-2 h-2 rounded-full" :class="getGatewayBadgeClass('telegram')" />
           <span class="text-slate-200 font-medium">Telegram:</span>
           <span :class="getGatewayTextClass('telegram')">
@@ -68,74 +60,7 @@
       </button>
     </div>
 
-    <!-- 1. Background Execution & System Tray Card -->
-    <div class="rounded-2xl bg-[#111420] border border-[#1e2336] overflow-hidden shadow-sm divide-y divide-[#1e2336]">
-      <div class="p-4 bg-[#141828]/50 flex items-center gap-2.5">
-        <div class="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-          <Monitor class="w-4 h-4" />
-        </div>
-        <div>
-          <h4 class="text-xs font-bold text-slate-200">{{ $t('settings.gateways.system_tray_card_title') }}</h4>
-          <p class="text-[11px] text-slate-400 mt-0.5">{{ $t('settings.gateways.system_tray_card_desc') }}</p>
-        </div>
-      </div>
-
-      <!-- Close to Tray toggle -->
-      <div class="p-4 flex items-center justify-between">
-        <div class="pr-4">
-          <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.close_to_tray_title') }}</span>
-          <p class="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-            {{ $t('settings.gateways.close_to_tray_desc') }}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          :aria-checked="localConfig.close_to_tray"
-          @click="localConfig.close_to_tray = !localConfig.close_to_tray"
-          :class="[
-            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-            localConfig.close_to_tray ? 'bg-indigo-600' : 'bg-slate-700'
-          ]"
-        >
-          <span
-            :class="[
-              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out',
-              localConfig.close_to_tray ? 'translate-x-5' : 'translate-x-0'
-            ]"
-          />
-        </button>
-      </div>
-
-      <!-- Run in Background toggle -->
-      <div class="p-4 flex items-center justify-between">
-        <div class="pr-4">
-          <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.run_in_background_title') }}</span>
-          <p class="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-            {{ $t('settings.gateways.run_in_background_desc') }}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          :aria-checked="localConfig.run_in_background"
-          @click="localConfig.run_in_background = !localConfig.run_in_background"
-          :class="[
-            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-            localConfig.run_in_background ? 'bg-indigo-600' : 'bg-slate-700'
-          ]"
-        >
-          <span
-            :class="[
-              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out',
-              localConfig.run_in_background ? 'translate-x-5' : 'translate-x-0'
-            ]"
-          />
-        </button>
-      </div>
-    </div>
-
-    <!-- 2. Telegram Bot Gateway Card -->
+    <!-- 1. Telegram Bot Gateway Card -->
     <div class="rounded-2xl bg-[#111420] border border-[#1e2336] overflow-hidden shadow-sm divide-y divide-[#1e2336]">
       <div class="p-4 bg-[#141828]/50 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
@@ -161,7 +86,7 @@
           @click="localConfig.gateways.telegram.enabled = !localConfig.gateways.telegram.enabled"
           :class="[
             'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-            localConfig.gateways.telegram.enabled ? 'bg-sky-600' : 'bg-slate-700'
+            localConfig.gateways.telegram.enabled ? 'bg-indigo-600' : 'bg-slate-700'
           ]"
         >
           <span
@@ -287,51 +212,21 @@
               <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.sliding_window_title') }}</span>
               <span class="text-[10px] text-slate-400">{{ $t('settings.gateways.sliding_window_desc') }}</span>
             </div>
-            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#141828] border border-[#22283b]">
-              <span class="text-xs font-mono font-bold text-sky-400">{{ localConfig.gateways.telegram.sliding_window || 4 }}</span>
+            <div class="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="2"
+                max="50"
+                step="1"
+                v-model.number="localConfig.gateways.telegram.sliding_window"
+                class="w-16 px-2.5 py-1 rounded-lg bg-[#141828] border border-[#22283b] text-xs font-mono font-bold text-sky-400 text-center outline-none focus:border-sky-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
               <span class="text-[10px] text-slate-500">{{ $t('settings.gateways.sliding_window_unit') }}</span>
             </div>
           </div>
-          <div class="flex items-center gap-3 pt-1">
-            <span class="text-[10px] font-mono text-slate-500">2</span>
-            <input
-              type="range"
-              min="2"
-              max="20"
-              step="2"
-              v-model.number="localConfig.gateways.telegram.sliding_window"
-              class="flex-1 h-1.5 bg-[#1a1f33] rounded-lg appearance-none cursor-pointer accent-sky-500"
-            />
-            <span class="text-[10px] font-mono text-slate-500">20</span>
-          </div>
         </div>
 
-        <!-- Cognitive Memory & Tools Options -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-          <label class="p-3 rounded-xl bg-[#0b0d16] border border-[#1d2235] flex items-center gap-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              v-model="localConfig.gateways.telegram.enable_memory"
-              class="rounded border-[#262c42] bg-[#141828] text-indigo-500 focus:ring-indigo-500/20"
-            />
-            <div>
-              <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.enable_memory_title') }}</span>
-              <span class="text-[10px] text-slate-400">{{ $t('settings.gateways.enable_memory_desc') }}</span>
-            </div>
-          </label>
 
-          <label class="p-3 rounded-xl bg-[#0b0d16] border border-[#1d2235] flex items-center gap-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              v-model="localConfig.gateways.telegram.enable_tools"
-              class="rounded border-[#262c42] bg-[#141828] text-indigo-500 focus:ring-indigo-500/20"
-            />
-            <div>
-              <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.enable_tools_title') }}</span>
-              <span class="text-[10px] text-slate-400">{{ $t('settings.gateways.enable_tools_desc') }}</span>
-            </div>
-          </label>
-        </div>
       </div>
     </div>
 
@@ -503,51 +398,21 @@
               <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.sliding_window_title') }}</span>
               <span class="text-[10px] text-slate-400">{{ $t('settings.gateways.sliding_window_desc') }}</span>
             </div>
-            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#141828] border border-[#22283b]">
-              <span class="text-xs font-mono font-bold text-indigo-400">{{ localConfig.gateways.discord.sliding_window || 4 }}</span>
+            <div class="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="2"
+                max="50"
+                step="1"
+                v-model.number="localConfig.gateways.discord.sliding_window"
+                class="w-16 px-2.5 py-1 rounded-lg bg-[#141828] border border-[#22283b] text-xs font-mono font-bold text-indigo-400 text-center outline-none focus:border-indigo-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
               <span class="text-[10px] text-slate-500">{{ $t('settings.gateways.sliding_window_unit') }}</span>
             </div>
           </div>
-          <div class="flex items-center gap-3 pt-1">
-            <span class="text-[10px] font-mono text-slate-500">2</span>
-            <input
-              type="range"
-              min="2"
-              max="20"
-              step="2"
-              v-model.number="localConfig.gateways.discord.sliding_window"
-              class="flex-1 h-1.5 bg-[#1a1f33] rounded-lg appearance-none cursor-pointer accent-indigo-500"
-            />
-            <span class="text-[10px] font-mono text-slate-500">20</span>
-          </div>
         </div>
 
-        <!-- Cognitive Memory & Tools Options -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-          <label class="p-3 rounded-xl bg-[#0b0d16] border border-[#1d2235] flex items-center gap-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              v-model="localConfig.gateways.discord.enable_memory"
-              class="rounded border-[#262c42] bg-[#141828] text-indigo-500 focus:ring-indigo-500/20"
-            />
-            <div>
-              <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.enable_memory_title') }}</span>
-              <span class="text-[10px] text-slate-400">{{ $t('settings.gateways.enable_memory_desc') }}</span>
-            </div>
-          </label>
 
-          <label class="p-3 rounded-xl bg-[#0b0d16] border border-[#1d2235] flex items-center gap-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              v-model="localConfig.gateways.discord.enable_tools"
-              class="rounded border-[#262c42] bg-[#141828] text-indigo-500 focus:ring-indigo-500/20"
-            />
-            <div>
-              <span class="text-xs font-bold text-slate-200 block">{{ $t('settings.gateways.enable_tools_title') }}</span>
-              <span class="text-[10px] text-slate-400">{{ $t('settings.gateways.enable_tools_desc') }}</span>
-            </div>
-          </label>
-        </div>
       </div>
     </div>
   </div>
@@ -560,7 +425,6 @@ import {
   Save,
   Check,
   RefreshCw,
-  Monitor,
   Send,
   MessageSquareShare,
   Eye,
@@ -592,9 +456,6 @@ const emit = defineEmits<{
 
 const localConfig = ref(JSON.parse(JSON.stringify(props.config || {})))
 
-// Ensure defaults
-if (localConfig.value.run_in_background === undefined) localConfig.value.run_in_background = true
-if (localConfig.value.close_to_tray === undefined) localConfig.value.close_to_tray = true
 if (!localConfig.value.gateways) {
   localConfig.value.gateways = {
     telegram: { enabled: false, bot_token: '', allowed_user_ids: [], enable_memory: true, enable_tools: false, sliding_window: 4 },
