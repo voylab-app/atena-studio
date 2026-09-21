@@ -568,14 +568,14 @@
                 <span class="text-[11px] text-slate-400">{{ $t('settings.cpu_threads_desc') }}</span>
               </div>
               <div class="flex items-center gap-1 bg-[#141826] p-1 rounded-xl border border-[#22283b]">
-                <button @click="config.thread_count = Math.max(1, (config.thread_count || 8) - 1); saveSettings()"
+                <button @click="config.thread_count = Math.max(1, (config.thread_count || 1) - 1); saveSettings()"
                   class="w-7 h-7 rounded-lg bg-[#1a1f30] hover:bg-[#22283d] text-slate-300 hover:text-white flex items-center justify-center transition-colors">
                   <Minus class="w-3 h-3" />
                 </button>
                 <span class="w-10 text-center font-mono font-bold text-xs text-indigo-300">
-                  {{ config.thread_count || 8 }}
+                  {{ config.thread_count || 1 }}
                 </span>
-                <button @click="config.thread_count = Math.min(32, (config.thread_count || 8) + 1); saveSettings()"
+                <button @click="config.thread_count = Math.min(hardware?.cpu_thread_count || 32, (config.thread_count || 1) + 1); saveSettings()"
                   class="w-7 h-7 rounded-lg bg-[#1a1f30] hover:bg-[#22283d] text-slate-300 hover:text-white flex items-center justify-center transition-colors">
                   <Plus class="w-3 h-3" />
                 </button>
@@ -2848,7 +2848,7 @@ const props = withDefaults(defineProps<Props>(), {
     models_directories: ['~/.atena/models'],
     auto_load_last_model: true,
     gpu_offload: true,
-    thread_count: 8,
+    thread_count: 0,
     ollama_host: '127.0.0.1',
     ollama_port: 11434,
     mlx_host: '127.0.0.1',

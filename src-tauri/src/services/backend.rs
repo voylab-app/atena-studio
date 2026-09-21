@@ -1241,9 +1241,9 @@ impl BackendManager {
                     .env("DYLD_LIBRARY_PATH", &dyld_paths);
         }
 
-        let total_cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
-        let safe_threads = if total_cpus > 4 { (total_cpus.saturating_sub(2)).max(2) } else { (total_cpus.saturating_sub(1)).max(1) };
-        let threads_str = safe_threads.to_string();
+        let config = crate::core::config::AppConfig::load();
+        let threads = config.thread_count.max(1);
+        let threads_str = threads.to_string();
 
         #[cfg(target_os = "macos")]
         let ngl = "99";
