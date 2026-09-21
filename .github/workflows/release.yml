@@ -62,12 +62,20 @@ jobs:
             squashfs-tools \
             patchelf \
             libfuse2 \
+            zsync \
             ffmpeg
 
       - name: Prepare sidecars (macOS / Linux)
         if: matrix.platform != 'windows-latest'
         run: |
           bash scripts/setup-sidecars.sh
+
+      - name: Configure Linux bundling environment
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/src-tauri/binaries:$GITHUB_WORKSPACE/src-tauri/binaries/llama:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "NO_STRIP=true" >> $GITHUB_ENV
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> $GITHUB_ENV
 
       - name: Prepare sidecars (Windows)
         if: matrix.platform == 'windows-latest'
@@ -100,4 +108,4 @@ jobs:
           releaseBody: 'See release assets and changelog for Atena Studio ${{ github.ref_name }}.'
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --verbose

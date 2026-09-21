@@ -70,6 +70,10 @@ if [ "$LLAMA_IS_RUNNABLE" -eq 0 ]; then
             # Copy all companion dynamic libraries alongside the destination binary
             cp "$LLAMA_DIR"/*.dylib "$BIN_DIR/" 2>/dev/null || true
             cp "$LLAMA_DIR"/*.so* "$BIN_DIR/" 2>/dev/null || true
+            chmod +x "$BIN_DIR"/*.dylib "$BIN_DIR"/*.so* "$LLAMA_DIR"/*.so* 2>/dev/null || true
+            if [ "$OS_NAME" = "Linux" ] && command -v patchelf >/dev/null 2>&1; then
+                patchelf --set-rpath '$ORIGIN:$ORIGIN/llama:$ORIGIN/../lib' "$LLAMA_DEST" 2>/dev/null || true
+            fi
         fi
     fi
     rm -rf "$TMP_LLAMA"
@@ -77,6 +81,9 @@ fi
 
 if [ -f "$LLAMA_DEST" ]; then
     chmod +x "$LLAMA_DEST"
+    if [ "$OS_NAME" = "Linux" ] && command -v patchelf >/dev/null 2>&1; then
+        patchelf --set-rpath '$ORIGIN:$ORIGIN/llama:$ORIGIN/../lib' "$LLAMA_DEST" 2>/dev/null || true
+    fi
     echo "✔ llama-server ready: $LLAMA_DEST"
 else
     echo "⚠ Warning: llama-server binary could not be resolved automatically. Place it at $LLAMA_DEST"
