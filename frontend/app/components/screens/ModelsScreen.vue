@@ -385,6 +385,7 @@
                     :alt="card.model.name"
                     class="w-full h-full object-contain p-1.5"
                     loading="lazy"
+                    @error="handleLogoError(getModelLogo(card.model))"
                   />
                   <component
                     v-else
@@ -1450,8 +1451,18 @@ watch(
   { immediate: true }
 )
 
+const failedLogos = ref<Set<string>>(new Set())
+
+const handleLogoError = (url?: string | null) => {
+  if (url) {
+    failedLogos.value.add(url)
+  }
+}
+
 const getModelLogo = (model: ModelInfo) => {
-  return resolveModelLogo(model, dynamicCatalogAvatars.value)
+  const logo = resolveModelLogo(model, dynamicCatalogAvatars.value)
+  if (logo && !failedLogos.value.has(logo)) return logo
+  return null
 }
 
 const formatContextLength = (model?: ModelInfo | null): string => {

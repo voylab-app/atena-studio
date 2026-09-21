@@ -242,7 +242,7 @@ fn default_theme_mode() -> AppThemeMode {
 }
 
 fn default_thread_count() -> usize {
-    8
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4)
 }
 
 fn default_mlx_port() -> u16 {
@@ -420,7 +420,7 @@ impl Default for AppConfig {
             models_directories: vec![default_dir],
             auto_load_last_model: true,
             enable_gpu_offload: true,
-            thread_count: 8,
+            thread_count: default_thread_count(),
             theme_mode: AppThemeMode::DarkCosmic,
             check_for_updates: true,
             mlx_server_port: 8080,

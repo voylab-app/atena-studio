@@ -204,9 +204,6 @@
       >
         <span class="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
         <span>{{ $t('chat.generating_response') }}</span>
-        <span v-if="message.tokens_count" class="text-slate-400">
-          ({{ message.tokens_count }} tok<span v-if="message.generation_speed_tps"> • {{ Number(message.generation_speed_tps).toFixed(1) }} tok/s</span>)
-        </span>
       </div>
 
       <!-- MCP Tool Call Interactive Cards (Grouped & Collapsible) -->

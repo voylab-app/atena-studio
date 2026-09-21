@@ -5,6 +5,7 @@
     "prepare:binaries": "node scripts/setup-sidecars.js",
     "dev": "node scripts/setup-sidecars.js && tauri dev",
     "build": "node scripts/setup-sidecars.js && tauri build",
+    "build:local": "node scripts/setup-sidecars.js && tauri build -b app,dmg",
     "server": "cargo run --manifest-path src-tauri/Cargo.toml --bin app -- --server --port 7860 --host 0.0.0.0",
     "server:watch": "cargo watch -C src-tauri -- cargo run --bin app -- --server --port 7860 --host 0.0.0.0"
   },

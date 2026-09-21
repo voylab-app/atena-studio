@@ -6,5 +6,5 @@ src-tauri/binaries/*.dylib
 src-tauri/binaries/*.tar.gz
 src-tauri/binaries/llama/
 node_modules/
-models
+/models/
 .env

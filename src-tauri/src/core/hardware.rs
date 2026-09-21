@@ -56,6 +56,7 @@ pub struct SystemHardwareInfo {
     pub used_vram_gb: f32,
     pub cpu_usage_percent: f32,
     pub gpu_usage_percent: f32,
+    pub cpu_thread_count: usize,
     pub is_unified_memory: bool,
     pub acceleration_backend: String,
 }
@@ -290,6 +291,7 @@ impl SystemHardwareInfo {
             used_vram_gb: ai_ram_gb,     // Dedicated AI Model + KV Cache VRAM
             cpu_usage_percent,
             gpu_usage_percent,
+            cpu_thread_count: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
             is_unified_memory: true,
             acceleration_backend: "Metal 3".into(),
         }
@@ -684,6 +686,7 @@ impl SystemHardwareInfo {
             used_vram_gb: ai_ram_gb,
             cpu_usage_percent,
             gpu_usage_percent,
+            cpu_thread_count: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
             is_unified_memory: false,
             acceleration_backend: accel,
         }
@@ -893,6 +896,7 @@ impl SystemHardwareInfo {
             used_vram_gb: 0.0,
             cpu_usage_percent: 0.0,
             gpu_usage_percent: 0.0,
+            cpu_thread_count: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
             is_unified_memory: false,
             acceleration_backend: accel,
         };

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AtenaStudio",
+  "productName": "Atena Studio",
   "version": "0.1.0",
   "identifier": "com.atena.studio",
   "build": {
