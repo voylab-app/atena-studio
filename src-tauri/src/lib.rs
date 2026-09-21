@@ -840,17 +840,23 @@ pub async fn execute_stream_chat_internal(
     let use_skills = is_memory_enabled && enable_skills_memory.unwrap_or(app_cfg.enable_skills_memory);
     let use_episodic = is_memory_enabled && enable_episodic_memory.unwrap_or(app_cfg.enable_episodic_memory);
 
-    if !is_memory_enabled {
-        log::info!("🧠 Cognitive memory disabled or suppressed: lightweight inference without neural associative prompt, facts, episodic tools, or procedural skills.");
+    // Backend-side injection: cognitive memory and procedural skill tools are managed
+    // exclusively by the memory toggles, not by the frontend's native tools toggle.
+    // The frontend never sends these tools — the backend injects them autonomously.
+    if is_memory_enabled {
+        let cognitive_tools = McpManager::memory_and_skills_tools();
         if let Some(ref mut tools) = params.mcp_tools {
-            // Suppress only associative cognitive memory tools, preserving native utilities (web search, webpage reader, scratchpad, scheduler)
-            tools.retain(|t| {
-                t.tool.name != "atena_search_memory"
-                    && t.tool.name != "atena_search_episodes"
-                    && t.tool.name != "atena_read_episode"
-            });
+            // Avoid duplicates: only add tools not already present
+            for ct in cognitive_tools {
+                if !tools.iter().any(|t| t.tool.name == ct.tool.name) {
+                    tools.push(ct);
+                }
+            }
+        } else {
+            params.mcp_tools = Some(cognitive_tools);
         }
-    } else {
+
+        // Selectively remove tools for disabled sub-features
         if !use_facts {
             if let Some(ref mut tools) = params.mcp_tools {
                 tools.retain(|t| t.tool.name != "atena_search_memory");
@@ -861,13 +867,28 @@ pub async fn execute_stream_chat_internal(
                 tools.retain(|t| t.tool.name != "atena_search_episodes" && t.tool.name != "atena_read_episode");
             }
         }
-    }
-
-    if !use_skills {
+        if !use_skills {
+            if let Some(ref mut tools) = params.mcp_tools {
+                tools.retain(|t| {
+                    t.server_id != "skills"
+                        && t.tool.name != "run_command"
+                        && t.tool.name != "run_skill_command"
+                        && t.tool.name != "run_skill_script"
+                        && t.tool.name != "create_procedural_skill"
+                        && t.tool.name != "update_procedural_skill"
+                        && t.tool.name != "edit_procedural_skill"
+                });
+            }
+        }
+    } else {
+        log::info!("🧠 Cognitive memory disabled or suppressed: lightweight inference without neural associative prompt, facts, episodic tools, or procedural skills.");
+        // When memory is fully disabled, ensure no cognitive tools leak through
         if let Some(ref mut tools) = params.mcp_tools {
-            // Suppress strictly procedural skill tools without affecting general native utilities
             tools.retain(|t| {
-                t.server_id != "skills"
+                t.tool.name != "atena_search_memory"
+                    && t.tool.name != "atena_search_episodes"
+                    && t.tool.name != "atena_read_episode"
+                    && t.server_id != "skills"
                     && t.tool.name != "run_command"
                     && t.tool.name != "run_skill_command"
                     && t.tool.name != "run_skill_script"

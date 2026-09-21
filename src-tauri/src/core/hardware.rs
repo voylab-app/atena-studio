@@ -7,6 +7,40 @@ extern "C" {
     fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut u8) -> i32;
 }
 
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[allow(non_snake_case)]
+struct MEMORYSTATUSEX {
+    dwLength: u32,
+    dwMemoryLoad: u32,
+    ullTotalPhys: u64,
+    ullAvailPhys: u64,
+    ullTotalPageFile: u64,
+    ullAvailPageFile: u64,
+    ullTotalVirtual: u64,
+    ullAvailVirtual: u64,
+    ullAvailExtendedVirtual: u64,
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[allow(non_snake_case)]
+struct FILETIME {
+    dwLowDateTime: u32,
+    dwHighDateTime: u32,
+}
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    fn GlobalMemoryStatusEx(lpBuffer: *mut MEMORYSTATUSEX) -> i32;
+    fn GetSystemTimes(
+        lpIdleTime: *mut FILETIME,
+        lpKernelTime: *mut FILETIME,
+        lpUserTime: *mut FILETIME,
+    ) -> i32;
+}
+
+
 
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,7 +117,17 @@ impl SystemHardwareInfo {
                 .and_then(|o| String::from_utf8(o.stdout).ok())
                 .unwrap_or_default()
                 .to_lowercase();
-            out.contains("amd") || out.contains("radeon")
+            if out.contains("amd") || out.contains("radeon") {
+                return true;
+            }
+            let ps_out = silent_command("powershell")
+                .args(["-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .unwrap_or_default()
+                .to_lowercase();
+            ps_out.contains("amd") || ps_out.contains("radeon")
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
@@ -445,24 +489,52 @@ impl SystemHardwareInfo {
     // Windows Implementation
     // =====================================================================
     #[cfg(target_os = "windows")]
+    fn get_windows_memory_status() -> (u64, u64) {
+        let mut mem = MEMORYSTATUSEX {
+            dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+            dwMemoryLoad: 0,
+            ullTotalPhys: 0,
+            ullAvailPhys: 0,
+            ullTotalPageFile: 0,
+            ullAvailPageFile: 0,
+            ullTotalVirtual: 0,
+            ullAvailVirtual: 0,
+            ullAvailExtendedVirtual: 0,
+        };
+        let ok = unsafe { GlobalMemoryStatusEx(&mut mem) };
+        if ok != 0 && mem.ullTotalPhys > 0 {
+            (mem.ullTotalPhys, mem.ullAvailPhys)
+        } else {
+            (0, 0)
+        }
+    }
+
+    #[cfg(target_os = "windows")]
     fn detect_system_windows() -> Self {
-        // Total physical memory via wmic
-        let mem_bytes = silent_command("wmic")
-            .args(["ComputerSystem", "get", "TotalPhysicalMemory", "/value"])
-            .output()
-            .ok()
-            .and_then(|o| {
-                let out = String::from_utf8_lossy(&o.stdout).to_string();
-                out.lines()
-                    .find(|l| l.starts_with("TotalPhysicalMemory="))
-                    .and_then(|l| l.split('=').nth(1))
-                    .and_then(|v| v.trim().parse::<u64>().ok())
-            })
-            .unwrap_or(17179869184);
+        // Total physical memory via native Win32 API
+        let (total_phys, avail_phys) = Self::get_windows_memory_status();
+        let total_ram_gb = if total_phys > 0 {
+            let gb = (total_phys as f32) / (1024.0 * 1024.0 * 1024.0);
+            (gb * 10.0).round() / 10.0
+        } else {
+            // Fallback via wmic or 16.0 GB
+            let mem_bytes = silent_command("wmic")
+                .args(["ComputerSystem", "get", "TotalPhysicalMemory", "/value"])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    let out = String::from_utf8_lossy(&o.stdout).to_string();
+                    out.lines()
+                        .find(|l| l.starts_with("TotalPhysicalMemory="))
+                        .and_then(|l| l.split('=').nth(1))
+                        .and_then(|v| v.trim().parse::<u64>().ok())
+                })
+                .unwrap_or(17179869184);
+            let gb = (mem_bytes as f32) / (1024.0 * 1024.0 * 1024.0);
+            (gb * 10.0).round() / 10.0
+        };
 
-        let total_ram_gb = (mem_bytes as f32) / (1024.0 * 1024.0 * 1024.0);
-
-        // CPU name
+        // CPU name (wmic -> registry -> environment variable)
         let chip = silent_command("wmic")
             .args(["cpu", "get", "Name", "/value"])
             .output()
@@ -474,9 +546,24 @@ impl SystemHardwareInfo {
                     .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
             })
             .filter(|s| !s.is_empty())
+            .or_else(|| {
+                silent_command("reg")
+                    .args(["query", "HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", "/v", "ProcessorNameString"])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        let out = String::from_utf8_lossy(&o.stdout).to_string();
+                        out.lines()
+                            .find(|l| l.contains("ProcessorNameString"))
+                            .and_then(|l| l.split("REG_SZ").nth(1))
+                            .map(|s| s.trim().to_string())
+                    })
+                    .filter(|s| !s.is_empty())
+            })
+            .or_else(|| std::env::var("PROCESSOR_IDENTIFIER").ok().filter(|s| !s.is_empty()))
             .unwrap_or_else(|| "CPU".to_string());
 
-        // GPU name for display
+        // GPU name for display (wmic -> powershell CIM)
         let gpu_name = silent_command("wmic")
             .args(["path", "win32_VideoController", "get", "Name", "/value"])
             .output()
@@ -488,9 +575,19 @@ impl SystemHardwareInfo {
                     .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
             })
             .filter(|s| !s.is_empty())
+            .or_else(|| {
+                silent_command("powershell")
+                    .args(["-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name | Select-Object -First 1"])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        let out = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if out.is_empty() { None } else { Some(out) }
+                    })
+            })
             .unwrap_or_else(|| "GPU".to_string());
 
-        // Computer model
+        // Computer model (wmic -> registry -> default)
         let device_name = silent_command("wmic")
             .args(["ComputerSystem", "get", "Model", "/value"])
             .output()
@@ -502,9 +599,30 @@ impl SystemHardwareInfo {
                     .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
             })
             .filter(|s| !s.is_empty())
+            .or_else(|| {
+                silent_command("reg")
+                    .args(["query", "HKLM\\HARDWARE\\DESCRIPTION\\System\\BIOS", "/v", "SystemProductName"])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        let out = String::from_utf8_lossy(&o.stdout).to_string();
+                        out.lines()
+                            .find(|l| l.contains("SystemProductName"))
+                            .and_then(|l| l.split("REG_SZ").nth(1))
+                            .map(|s| s.trim().to_string())
+                    })
+                    .filter(|s| !s.is_empty())
+            })
             .unwrap_or_else(|| "PC Windows".to_string());
 
-        let used_ram_gb = Self::read_used_ram_gb_windows();
+        let used_ram_gb = if total_phys > 0 {
+            let used_bytes = total_phys.saturating_sub(avail_phys);
+            let gb = (used_bytes as f32) / (1024.0 * 1024.0 * 1024.0);
+            (gb * 10.0).round() / 10.0
+        } else {
+            Self::read_used_ram_gb_windows()
+        };
+
         let ai_ram_gb = Self::read_ai_process_ram_gb_windows();
         let free_ram_gb = (total_ram_gb - used_ram_gb).max(0.0);
         let system_other_ram_gb = (used_ram_gb - ai_ram_gb).max(0.0);
@@ -524,7 +642,7 @@ impl SystemHardwareInfo {
             "CPU".to_string()
         };
 
-        // Try to detect dedicated VRAM via wmic
+        // Try to detect dedicated VRAM (wmic -> powershell)
         let vram_bytes = silent_command("wmic")
             .args(["path", "win32_VideoController", "get", "AdapterRAM", "/value"])
             .output()
@@ -535,6 +653,16 @@ impl SystemHardwareInfo {
                     .find(|l| l.starts_with("AdapterRAM="))
                     .and_then(|l| l.split('=').nth(1))
                     .and_then(|v| v.trim().parse::<u64>().ok())
+            })
+            .or_else(|| {
+                silent_command("powershell")
+                    .args(["-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty AdapterRAM | Select-Object -First 1"])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        let out = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        out.parse::<u64>().ok()
+                    })
             })
             .unwrap_or(0);
 
@@ -561,10 +689,17 @@ impl SystemHardwareInfo {
         }
     }
 
-    /// Reads used RAM on Windows via wmic
+    /// Reads used RAM on Windows via native Win32 GlobalMemoryStatusEx with wmic fallback
     #[cfg(target_os = "windows")]
     fn read_used_ram_gb_windows() -> f32 {
-        // Get free physical memory (in KB) then subtract from total
+        let (total_phys, avail_phys) = Self::get_windows_memory_status();
+        if total_phys > 0 {
+            let used_bytes = total_phys.saturating_sub(avail_phys);
+            let gb = (used_bytes as f32) / (1024.0 * 1024.0 * 1024.0);
+            return (gb * 10.0).round() / 10.0;
+        }
+
+        // Fallback: Get free physical memory (in KB) then subtract from total via wmic
         let free_kb = silent_command("wmic")
             .args(["OS", "get", "FreePhysicalMemory", "/value"])
             .output()
@@ -629,9 +764,46 @@ impl SystemHardwareInfo {
         (total_gb * 10.0).round() / 10.0
     }
 
-    /// Reads CPU usage on Windows via wmic
+    /// Reads CPU usage on Windows via native Win32 GetSystemTimes with wmic fallback
     #[cfg(target_os = "windows")]
     fn read_cpu_usage_windows() -> f32 {
+        static PREV_CPU_TIMES: std::sync::Mutex<Option<(u64, u64)>> = std::sync::Mutex::new(None);
+
+        let mut idle_ft = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+        let mut kernel_ft = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+        let mut user_ft = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+
+        let success = unsafe {
+            GetSystemTimes(&mut idle_ft, &mut kernel_ft, &mut user_ft)
+        };
+
+        if success != 0 {
+            let idle = ((idle_ft.dwHighDateTime as u64) << 32) | (idle_ft.dwLowDateTime as u64);
+            let kernel = ((kernel_ft.dwHighDateTime as u64) << 32) | (kernel_ft.dwLowDateTime as u64);
+            let user = ((user_ft.dwHighDateTime as u64) << 32) | (user_ft.dwLowDateTime as u64);
+            let total = kernel + user;
+
+            let mut guard = PREV_CPU_TIMES.lock().unwrap_or_else(|e| e.into_inner());
+            match *guard {
+                Some((prev_idle, prev_total)) => {
+                    let idle_diff = idle.saturating_sub(prev_idle);
+                    let total_diff = total.saturating_sub(prev_total);
+                    *guard = Some((idle, total));
+
+                    if total_diff > 0 {
+                        let usage = (1.0 - (idle_diff as f64 / total_diff as f64)) * 100.0;
+                        return (usage.clamp(0.0, 100.0) as f32 * 10.0).round() / 10.0;
+                    }
+                    return 0.0;
+                }
+                None => {
+                    *guard = Some((idle, total));
+                    return 0.0;
+                }
+            }
+        }
+
+        // Fallback to wmic
         silent_command("wmic")
             .args(["cpu", "get", "LoadPercentage", "/value"])
             .output()
