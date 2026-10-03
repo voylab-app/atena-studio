@@ -663,6 +663,7 @@ const emit = defineEmits<{
   assignProject: [projectId: any]
   deleteMessage: [payload: any]
   unarchiveSession: [id: string]
+  continueGeneration: [message: any]
 }>()
 
 const handleRetryLastMessage = () => {
@@ -673,18 +674,18 @@ const handleRetryLastMessage = () => {
   }
 }
 
-const handleContinueGeneration = () => {
+const handleContinueGeneration = (msg?: any) => {
   if (props.isGenerating) return
-  // If max_tokens is constrained (<= 2048), bump it so continuation doesn't immediately truncate again
-  if (props.params && (props.params.max_tokens ?? 0) <= 2048) {
-    props.params.max_tokens = Math.min((props.params.max_tokens || 0) + 2048, 8192)
+  const targetMsg = msg || [...(props.currentSession?.messages || [])].reverse().find((m) => m.role === 'assistant')
+  if (!targetMsg) return
+
+  // If max_tokens is constrained (<= 4096), bump it so continuation doesn't immediately truncate again
+  if (props.params && (props.params.max_tokens ?? 0) <= 4096) {
+    props.params.max_tokens = Math.min((props.params.max_tokens || 4096) + 4096, 16384)
     showToast(t('chat.limit_raised', { tokens: props.params.max_tokens }))
   }
-  emit('sendMessage', {
-    text: 'continue de onde parou',
-    display_text: 'continue de onde parou',
-    attachments: []
-  })
+
+  emit('continueGeneration', targetMsg)
 }
 
 const showToolsModal = ref(false)

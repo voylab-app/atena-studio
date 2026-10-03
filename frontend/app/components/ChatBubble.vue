@@ -181,7 +181,7 @@
 
       <!-- Fallback when model finished thinking with no output -->
       <div
-        v-else-if="!isUser && !message.is_streaming && (!message.tool_calls || message.tool_calls.length === 0) && message.thinking && !cleanContentText"
+        v-else-if="!isUser && !message.is_streaming && (!message.tool_calls || message.tool_calls.length === 0) && message.thinking && !cleanContentText && !isTokenLimitReached"
         class="text-xs text-slate-400/80 italic flex items-center gap-1.5 py-1 select-none"
       >
         <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
@@ -756,7 +756,7 @@
               {{ $t('chat.token_limit_reached_title', { count: tokenLimitCount }) }}
             </div>
             <p class="text-[11.5px] text-slate-300 mt-0.5 leading-relaxed">
-              {{ $t('chat.token_limit_banner_desc') }}
+              {{ message.thinking && !cleanContentText ? $t('chat.token_limit_banner_desc_thinking') : $t('chat.token_limit_banner_desc') }}
             </p>
           </div>
         </div>

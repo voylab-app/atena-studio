@@ -54,7 +54,8 @@
           @assignProject="handleAssignSessionProject"
           @refreshTools="fetchMcpTools" @selectTab="activeTab = $event"
           @openParams="isDrawerOpen = true"
-          @unarchiveSession="handleUnarchiveSession" />
+          @unarchiveSession="handleUnarchiveSession"
+          @continueGeneration="handleContinueGeneration" />
 
         <ModelsScreen v-show="activeTab === 'models'" :models="allModels" :activeModelId="activeModel?.id"
           :loadingModelId="loadingModelId" :isLoadingModel="isLoadingModel"
@@ -1501,6 +1502,204 @@ const buildPromptWithAttachments = (text: string, attachments: any[] = []) => {
   return prompt
 }
 
+const mergeContinuationText = (base: string, continuation: string): string => {
+  if (!base) return continuation || ''
+  if (!continuation) return base
+
+  // Check if continuation overlaps with the end of base (up to 60 characters)
+  const maxOverlap = Math.min(base.length, continuation.length, 60)
+  for (let len = maxOverlap; len >= 3; len--) {
+    if (base.slice(-len) === continuation.slice(0, len)) {
+      return base + continuation.slice(len)
+    }
+  }
+
+  // If no overlap, check token spacing
+  const baseEndsWithSpace = /\s$/.test(base)
+  const contStartsWithSpace = /^\s/.test(continuation)
+  if (!baseEndsWithSpace && !contStartsWithSpace) {
+    const baseEndsWithPunct = /[.,!?:;)}\]]/.test(base.slice(-1))
+    return baseEndsWithPunct ? `${base} ${continuation}` : `${base}${continuation}`
+  }
+
+  return base + continuation
+}
+
+const handleContinueGeneration = async (msg?: any) => {
+  if (isGenerating.value || !currentSession.value) return
+
+  // Find target assistant message
+  const targetIndex = msg
+    ? currentSession.value.messages.findIndex((m) => m.id === msg.id)
+    : currentSession.value.messages.map((m, idx) => ({ m, idx })).filter(({ m }) => m.role === 'assistant').slice(-1)[0]?.idx ?? -1
+
+  if (targetIndex === -1) return
+  const targetMsg = currentSession.value.messages[targetIndex]
+  if (!targetMsg || targetMsg.role !== 'assistant') return
+
+  // If there are subsequent messages that were continuation attempts or empty responses, clean them up
+  if (targetIndex < currentSession.value.messages.length - 1) {
+    const trailing = currentSession.value.messages.slice(targetIndex + 1)
+    const isTrailingContinuation = trailing.every((m) =>
+      (m.role === 'user' && (/^(continue|continua|prossiga|siga|continue de onde parou|continue from where you left off)/i.test(m.content || '') || m.display_text === 'continue de onde parou' || m.display_text === t('chat.continue_response'))) ||
+      (m.role === 'assistant' && (!m.content || !m.content.trim()))
+    )
+    if (isTrailingContinuation) {
+      currentSession.value.messages.splice(targetIndex + 1)
+    }
+  }
+
+  // If max_tokens is constrained (<= 4096), bump it so continuation has plenty of headroom
+  if (params.value && (params.value.max_tokens ?? 0) <= 4096) {
+    params.value.max_tokens = Math.min((params.value.max_tokens || 4096) + 4096, 16384)
+  }
+
+  const baseContent = targetMsg.content || ''
+  const baseThinking = targetMsg.thinking || ''
+  const baseTokens = targetMsg.tokens_count || 0
+  const hadThinkingOnly = Boolean(baseThinking && !baseContent.trim())
+
+  // Build chat history strictly up to this assistant message
+  const previousMessages = currentSession.value.messages.slice(0, targetIndex)
+  const chatHistory = previousMessages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({
+      role: m.role,
+      content: m.content || '',
+      images: m.images || null,
+      tool_calls: m.tool_calls || null,
+      tool_call_id: m.tool_call_id || null
+    }))
+
+  let continuationPrompt = ''
+  if (hadThinkingOnly) {
+    chatHistory.push({
+      role: 'assistant',
+      content: `<think>\n${baseThinking}\n</think>`,
+      images: null,
+      tool_calls: null,
+      tool_call_id: null
+    })
+    continuationPrompt = '[Directive: Your internal reasoning is finished above. Provide your direct and complete response to the user now. Do not generate internal thinking or reasoning tags.]'
+  } else {
+    chatHistory.push({
+      role: 'assistant',
+      content: baseContent,
+      images: null,
+      tool_calls: null,
+      tool_call_id: null
+    })
+    continuationPrompt = '[Directive: Continue your previous response directly from where it was cut off. Do not repeat what you already wrote, do not restart, and do not output internal thinking or reasoning tags. Output only the immediate continuation.]'
+  }
+
+  chatHistory.push({
+    role: 'user',
+    content: continuationPrompt,
+    images: null,
+    tool_calls: null,
+    tool_call_id: null
+  })
+
+  // Mark target message as actively streaming
+  targetMsg.is_streaming = true
+  if (targetMsg.metrics) {
+    targetMsg.metrics.finish_reason = null
+  }
+  targetMsg.finish_reason = null
+
+  const thisGenId = ++activeGenerationId
+  for (const m of currentSession.value.messages) {
+    if (m.id !== targetMsg.id && m.is_streaming) m.is_streaming = false
+  }
+
+  isGenerating.value = true
+  const startTime = Date.now()
+
+  try {
+    const channel = new Channel<any>()
+
+    channel.onmessage = (chunk: any) => {
+      if (thisGenId !== activeGenerationId || !isGenerating.value) return
+
+      const curr = currentSession.value.messages.find((m) => m.id === targetMsg.id)
+      if (curr) {
+        if (hadThinkingOnly) {
+          curr.content = chunk.content || ''
+          curr.thinking = baseThinking || chunk.thinking || null
+        } else {
+          curr.content = mergeContinuationText(baseContent, chunk.content || '')
+          if (baseThinking && !curr.thinking) {
+            curr.thinking = baseThinking
+          }
+        }
+
+        curr.is_streaming = !chunk.is_done
+        if (chunk.metrics) {
+          curr.metrics = {
+            ...curr.metrics,
+            ...chunk.metrics
+          }
+        }
+
+        const newTokCount = chunk.metrics?.completion_tokens || Math.ceil((chunk.content?.length || 0) / 4)
+        curr.tokens_count = baseTokens + newTokCount
+
+        const elapsed = chunk.elapsed_ms || (Date.now() - startTime)
+        if (chunk.metrics?.generation_speed_tps) {
+          curr.generation_speed_tps = parseFloat(Number(chunk.metrics.generation_speed_tps).toFixed(1))
+        } else if (elapsed > 0) {
+          curr.generation_speed_tps = parseFloat((newTokCount / (elapsed / 1000)).toFixed(1))
+        }
+
+        if (chunk.is_done) {
+          isGenerating.value = false
+          curr.is_streaming = false
+          saveSessions(true)
+        }
+      }
+    }
+
+    const isPrivate = !!currentSession.value?.is_private
+    const isMemoryDisabled = !config.value.enable_cognitive_memory || isPrivate
+    const isFactsDisabled = isMemoryDisabled || config.value.enable_facts_memory === false
+    const isSkillsDisabled = isMemoryDisabled || config.value.enable_skills_memory === false
+    const isEpisodicDisabled = isMemoryDisabled || config.value.enable_episodic_memory === false
+
+    const inferenceParams = {
+      ...params.value,
+      enable_thinking: false,
+      mcp_tools: undefined
+    }
+
+    let effectivePrompt = getEffectiveSystemPrompt()
+
+    await invoke('stream_chat', {
+      model: activeModel.value,
+      systemPrompt: effectivePrompt,
+      messages: chatHistory,
+      userMessage: continuationPrompt,
+      sessionId: currentSession.value?.id || null,
+      sessionTitle: currentSession.value?.title || null,
+      params: inferenceParams,
+      mlxHost: config.value.mlx_host,
+      mlxPort: config.value.mlx_port,
+      ollamaHost: config.value.ollama_host,
+      ollamaPort: config.value.ollama_port,
+      enableMemory: !isMemoryDisabled,
+      enableFactsMemory: !isFactsDisabled,
+      enableSkillsMemory: !isSkillsDisabled,
+      enableEpisodicMemory: !isEpisodicDisabled,
+      onEvent: channel
+    })
+  } catch (err) {
+    console.error('Continuation error:', err)
+    targetMsg.is_streaming = false
+    isGenerating.value = false
+  } finally {
+    saveSessions(true)
+  }
+}
+
 const handleResendMessage = async (msg: any) => {
   if (isGenerating.value || !msg) return
 
@@ -1546,6 +1745,17 @@ const handleSendMessage = async (payload: any) => {
   const displayText = isObject ? (payload.display_text || '') : ''
   const userImages = isObject ? payload.images : undefined
   const userAttachments = isObject ? payload.attachments : undefined
+
+  // If user typed a continuation command and the last message was an assistant message stopped by token limit, resume seamlessly
+  if (currentSession.value?.messages?.length) {
+    const lastMsg = currentSession.value.messages.slice(-1)[0]
+    const isContinuationWord = /^(continue|continua|prossiga|siga|continue de onde parou|continue from where you left off|go on|keep going)\b/i.test(userText.trim())
+    const lastWasTokenLimit = lastMsg && lastMsg.role === 'assistant' && (lastMsg.metrics?.finish_reason === 'length' || lastMsg.finish_reason === 'length')
+    if (isContinuationWord && lastWasTokenLimit) {
+      await handleContinueGeneration(lastMsg)
+      return
+    }
+  }
 
   // Guarantee attached files content is embedded if not yet attached
   if (userAttachments && userAttachments.length > 0 && !userText.includes('--- [')) {
