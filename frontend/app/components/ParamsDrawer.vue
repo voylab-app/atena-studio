@@ -196,7 +196,10 @@
           <!-- Max Tokens -->
           <div class="space-y-1.5 p-3 rounded-xl bg-[#131724] border border-[#1e2436]">
             <div class="flex justify-between items-center">
-              <label class="font-medium text-slate-200">{{ $t('params.max_tokens_label') }}</label>
+              <div>
+                <label class="font-medium text-slate-200 block">{{ $t('params.max_tokens_label') }}</label>
+                <span class="text-[11px] text-slate-400 block">{{ $t('params.max_tokens_desc') }}</span>
+              </div>
               <span class="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                 {{ params.max_tokens }}
               </span>
@@ -205,13 +208,36 @@
               type="range"
               v-model.number="params.max_tokens"
               min="256"
-              max="8192"
-              step="128"
+              max="16384"
+              step="256"
+              class="w-full cursor-pointer accent-indigo-500"
             />
             <div class="flex justify-between text-[10px] text-slate-400 font-mono">
               <span>256</span>
-              <span>8192</span>
+              <span>16.384</span>
             </div>
+
+            <!-- Quick Presets for Max Tokens -->
+            <div class="flex flex-wrap gap-1 pt-1">
+              <button
+                v-for="preset in [1024, 2048, 4096, 8192, 16384]"
+                :key="preset"
+                type="button"
+                @click="params.max_tokens = preset"
+                :class="[
+                  'px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold transition-all border cursor-pointer',
+                  params.max_tokens === preset
+                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-600/30'
+                    : 'bg-[#121522] text-slate-400 border-[#1f2538] hover:text-slate-200 hover:bg-[#181d2e]'
+                ]"
+              >
+                {{ preset >= 1000 ? `${Math.round(preset / 1024)}k` : preset }}
+              </button>
+            </div>
+
+            <p class="text-[10px] text-slate-400 leading-relaxed">
+              {{ $t('params.max_tokens_tip') }}
+            </p>
           </div>
 
           <!-- GPU Layers Offload -->
